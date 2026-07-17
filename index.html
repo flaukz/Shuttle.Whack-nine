@@ -806,6 +806,7 @@ async function loadScheduleList(){
       actionBtn = `<button class="small" onclick="sendPrompt('Enter the score for ${m.teamA.name} vs ${m.teamB.name}')">Go to Score Entry →</button>`;
     }
     actionBtn += ` <button class="small ghost" onclick="editMatch('${m.id}')">Edit</button>`;
+    actionBtn += ` <button class="small ghost" style="border-color:var(--danger); color:var(--danger);" onclick="cancelMatch('${m.id}')">Cancel Match</button>`;
 
     return `<div class="schedule-card">
       <div class="top-row">
@@ -826,6 +827,30 @@ async function startMatch(matchId){
   if(!db) return;
   const { error } = await db.from('matches').update({ status: 'in_progress' }).eq('id', matchId);
   if(!error) loadScheduleList();
+}
+
+async function cancelMatch(matchId){
+  if(!db) return;
+
+  const { data: m } = await db.from('matches').select('status').eq('id', matchId).single();
+  const warning = (m && m.status === 'completed')
+    ? 'This match already has a recorded score. Cancelling will permanently delete the match and its score. Continue?'
+    : 'This will permanently remove the match from the schedule. Continue?';
+
+  if(!confirm(warning)) return;
+
+  await db.from('match_players').delete().eq('match_id', matchId);
+  const { error } = await db.from('matches').delete().eq('id', matchId);
+
+  if(error){
+    alert('Error cancelling match: ' + error.message);
+    return;
+  }
+
+  // If this match was being edited, reset the form
+  if(editingMatchId === matchId) cancelEdit();
+
+  loadScheduleList();
 }
 
 // ---------- SCORE ENTRY ----------
