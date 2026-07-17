@@ -338,15 +338,15 @@
   <div class="tab" id="tab-schedule">
     <div class="card">
       <h3 id="schedule-form-title">Schedule a Match</h3>
-      <label>Category</label>
-      <select id="sc-category"></select>
-
-      <label>Bracket Round (only for bracket-only categories)</label>
-      <select id="sc-round">
+      <label>Round</label>
+      <select id="sc-round" onchange="updateCategoryOptionsForRound()">
         <option value="round_robin">Round Robin (default)</option>
         <option value="semifinal">Semifinal</option>
         <option value="final">Final</option>
       </select>
+
+      <label id="sc-category-label">Category</label>
+      <select id="sc-category"></select>
 
       <label>Court</label>
       <select id="sc-court">
@@ -517,10 +517,25 @@ window.addEventListener('DOMContentLoaded', ()=>{
 
 async function initApp(){
   await loadTeamsAndCategories();
+  await ensureMatchupCategories();
   await loadPlayers();
   refreshRosterLists();
   populateScheduleDropdowns();
   await loadScheduleList();
+}
+
+const SEMIFINAL_MATCHUP_CATEGORIES = ['1 MD E vs 2 MD E', '1 WD E vs 2 WD E', '1 MXD E vs 2 MXD E'];
+
+async function ensureMatchupCategories(){
+  const existingNames = categories.map(c=>c.name);
+  const missing = SEMIFINAL_MATCHUP_CATEGORIES.filter(n=>!existingNames.includes(n));
+  if(missing.length){
+    const rows = missing.map(n=>({ name: n, counts_toward_team_total: false, is_bracket: true }));
+    const { error } = await db.from('categories').insert(rows);
+    if(!error){
+      await loadTeamsAndCategories();
+    }
+  }
 }
 
 // ---------- RESET ----------
@@ -709,11 +724,7 @@ async function addPlayer(){
 
 // ---------- SCHEDULE TAB ----------
 function populateScheduleDropdowns(){
-  const catSelect = document.getElementById('sc-category');
-  catSelect.innerHTML = categories.map(c=>{
-    const tag = c.counts_toward_team_total ? '' : ' (bracket only)';
-    return `<option value="${c.id}">${c.name}${tag}</option>`;
-  }).join('');
+  updateCategoryOptionsForRound();
 
   const teamA = document.getElementById('sc-teamA');
   const teamB = document.getElementById('sc-teamB');
@@ -727,6 +738,27 @@ function populateScheduleDropdowns(){
 
   populateTeamPlayers('A');
   populateTeamPlayers('B');
+}
+
+function updateCategoryOptionsForRound(){
+  const round = document.getElementById('sc-round').value;
+  const catSelect = document.getElementById('sc-category');
+  const label = document.getElementById('sc-category-label');
+
+  if(round === 'round_robin'){
+    label.textContent = 'Category';
+    const roundRobinCats = categories.filter(c => !SEMIFINAL_MATCHUP_CATEGORIES.includes(c.name));
+    catSelect.innerHTML = roundRobinCats.map(c=>{
+      const tag = c.counts_toward_team_total ? '' : ' (bracket only)';
+      return `<option value="${c.id}">${c.name}${tag}</option>`;
+    }).join('');
+  } else {
+    label.textContent = 'Matchup';
+    const matchupCats = categories.filter(c => SEMIFINAL_MATCHUP_CATEGORIES.includes(c.name));
+    catSelect.innerHTML = matchupCats.length
+      ? matchupCats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')
+      : '<option value="">Reconnect to auto-create matchup categories</option>';
+  }
 }
 
 function populateTeamPlayers(side){
@@ -836,8 +868,9 @@ async function editMatch(matchId){
   document.getElementById('schedule-submit-btn').textContent = 'Save Changes';
   document.getElementById('schedule-cancel-btn').classList.remove('hidden');
 
-  document.getElementById('sc-category').value = m.category_id;
   document.getElementById('sc-round').value = m.round;
+  updateCategoryOptionsForRound();
+  document.getElementById('sc-category').value = m.category_id;
   document.getElementById('sc-court').value = m.court_number;
   document.getElementById('sc-teamA').value = m.team_a_id;
   document.getElementById('sc-teamB').value = m.team_b_id;
