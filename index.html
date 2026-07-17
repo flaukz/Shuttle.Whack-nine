@@ -16,6 +16,9 @@
     --card:#ffffff;
     --danger:#c1442e;
     --radius:10px;
+    --pill-not-played:#9aa5a0;
+    --pill-ongoing:#e08a1e;
+    --pill-finished:#1f6b4f;
   }
   *{box-sizing:border-box;}
   body{
@@ -90,6 +93,7 @@
     border-left:4px solid var(--court-green);
   }
   .card h3{margin-top:0; font-size:1rem;}
+  .card p.hint{font-size:0.82rem; color:var(--gray); margin-top:-6px;}
   label{
     display:block;
     font-size:0.78rem;
@@ -122,14 +126,31 @@
     width:100%;
   }
   button.primary:active{background:var(--court-green-dark);}
-  button.ghost{
+  button.danger{
+    background:var(--danger);
+    color:#fff;
+    border:none;
+    padding:11px 16px;
+    border-radius:6px;
+    font-weight:600;
+    font-size:0.9rem;
+    cursor:pointer;
+    width:100%;
+  }
+  button.small{
+    background:var(--court-green);
+    color:#fff;
+    border:none;
+    padding:6px 12px;
+    border-radius:6px;
+    font-size:0.78rem;
+    font-weight:600;
+    cursor:pointer;
+  }
+  button.small.ghost{
     background:none;
     border:1px solid var(--court-green);
     color:var(--court-green);
-    padding:6px 10px;
-    border-radius:6px;
-    font-size:0.8rem;
-    cursor:pointer;
   }
   .badge{
     display:inline-block;
@@ -142,12 +163,15 @@
     margin-left:6px;
   }
   .badge.excluded{background:#e5e5e5; color:var(--gray);}
-  .match-item{
+  .list-item{
     border-bottom:1px solid #eee;
-    padding:10px 0;
-    font-size:0.9rem;
+    padding:9px 0;
+    font-size:0.88rem;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
   }
-  .match-item:last-child{border-bottom:none;}
+  .list-item:last-child{border-bottom:none;}
   .winner{font-weight:700; color:var(--court-green);}
   table{width:100%; border-collapse:collapse; font-size:0.9rem;}
   th, td{padding:8px 6px; text-align:left; border-bottom:1px solid #eee;}
@@ -194,6 +218,53 @@
     padding:2px 6px;
     border-radius:4px;
   }
+  /* Status pills */
+  .pill{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    font-size:0.72rem;
+    font-weight:700;
+    padding:4px 10px;
+    border-radius:20px;
+    color:#fff;
+    white-space:nowrap;
+  }
+  .pill::before{
+    content:"";
+    width:7px; height:7px;
+    border-radius:50%;
+    background:#fff;
+  }
+  .pill.not-played{background:var(--pill-not-played);}
+  .pill.ongoing{background:var(--pill-ongoing);}
+  .pill.finished{background:var(--pill-finished);}
+  .schedule-card{
+    background:#f7faf8;
+    border:1px solid #e2e8e4;
+    border-radius:8px;
+    padding:12px;
+    margin-bottom:10px;
+  }
+  .schedule-card .top-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:6px;
+  }
+  .schedule-card .teams{
+    font-size:0.95rem;
+    font-weight:600;
+  }
+  .schedule-card .meta{
+    font-size:0.78rem;
+    color:var(--gray);
+    margin-bottom:8px;
+  }
+  .schedule-card .actions{
+    display:flex;
+    gap:8px;
+  }
 </style>
 </head>
 <body>
@@ -206,6 +277,7 @@
 <nav>
   <button class="active" data-tab="setup">Setup</button>
   <button data-tab="players">Players</button>
+  <button data-tab="schedule">Schedule</button>
   <button data-tab="score">Score Entry</button>
   <button data-tab="leaderboard">Leaderboard</button>
   <button data-tab="bracket">Bracket</button>
@@ -225,17 +297,67 @@
       <button class="primary" onclick="connectSupabase()">Connect</button>
       <div id="setup-msg"></div>
     </div>
+
+    <div class="card" style="border-left-color:var(--danger);">
+      <h3>Reset Demo Data</h3>
+      <p class="hint">Clears all scheduled matches and scores so you can run a fresh demo of Score Entry and the Leaderboard. Your teams, categories, and player roster are kept.</p>
+      <button class="danger" onclick="resetDemoData()">Reset Matches &amp; Scores</button>
+      <div id="reset-msg"></div>
+    </div>
   </div>
 
-  <!-- PLAYER / MATCH ENCODING TAB -->
+  <!-- PLAYERS TAB (roster management only) -->
   <div class="tab" id="tab-players">
     <div class="card">
-      <h3>Create Match</h3>
+      <h3>Add Team</h3>
+      <label>Team Name</label>
+      <input id="new-team-name" placeholder="e.g. Falcon">
+      <button class="primary" onclick="addTeam()">Add Team</button>
+      <div id="team-msg"></div>
+      <div id="team-list" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card">
+      <h3>Add Category</h3>
+      <label>Category Name</label>
+      <input id="new-cat-name" placeholder="e.g. MD D">
+      <label style="display:flex; align-items:center; gap:8px; text-transform:none; font-size:0.85rem;">
+        <input type="checkbox" id="new-cat-bracket" style="width:auto;">
+        Bracket-only category (excluded from team total — use for 2 MD E / 2 WD E / 2 MXD E)
+      </label>
+      <button class="primary" onclick="addCategory()">Add Category</button>
+      <div id="cat-msg"></div>
+      <div id="cat-list" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card">
+      <h3>Add Player</h3>
+      <label>Player Name</label>
+      <input id="new-player-name" placeholder="e.g. Juan Dela Cruz">
+      <label>Team</label>
+      <select id="new-player-team"></select>
+      <button class="primary" onclick="addPlayer()">Add Player</button>
+      <div id="player-msg"></div>
+      <div id="player-list" style="margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <!-- TOURNAMENT SCHEDULE TAB -->
+  <div class="tab" id="tab-schedule">
+    <div class="card">
+      <h3>Schedule a Match</h3>
       <label>Category</label>
-      <select id="p-category"></select>
+      <select id="sc-category"></select>
+
+      <label>Bracket Round (only for bracket-only categories)</label>
+      <select id="sc-round">
+        <option value="round_robin">Round Robin (default)</option>
+        <option value="semifinal">Semifinal</option>
+        <option value="final">Final</option>
+      </select>
 
       <label>Court</label>
-      <select id="p-court">
+      <select id="sc-court">
         <option value="1">Court 1</option>
         <option value="2">Court 2</option>
         <option value="3">Court 3</option>
@@ -246,39 +368,33 @@
       <div class="row">
         <div>
           <label>Team A</label>
-          <select id="p-teamA"></select>
+          <select id="sc-teamA" onchange="populateTeamPlayers('A')"></select>
+          <label>Team A Player 1</label>
+          <select id="sc-playerA1"></select>
+          <label>Team A Player 2 (doubles)</label>
+          <select id="sc-playerA2"></select>
         </div>
         <div>
           <label>Team B</label>
-          <select id="p-teamB"></select>
+          <select id="sc-teamB" onchange="populateTeamPlayers('B')"></select>
+          <label>Team B Player 1</label>
+          <select id="sc-playerB1"></select>
+          <label>Team B Player 2 (doubles)</label>
+          <select id="sc-playerB2"></select>
         </div>
       </div>
 
-      <div class="row">
-        <div>
-          <label>Team A Player(s)</label>
-          <input id="p-playersA" placeholder="e.g. Juan, Mark">
-        </div>
-        <div>
-          <label>Team B Player(s)</label>
-          <input id="p-playersB" placeholder="e.g. Ana, Liza">
-        </div>
-      </div>
-
-      <label>Bracket Round (only for 2 MD E / 2 WD E / 2 MXD E)</label>
-      <select id="p-round">
-        <option value="round_robin">Round Robin (default)</option>
-        <option value="semifinal">Semifinal</option>
-        <option value="final">Final</option>
-      </select>
-
-      <button class="primary" onclick="createMatch()">Create Match</button>
-      <div id="players-msg"></div>
+      <button class="primary" onclick="createMatch()">Add to Schedule</button>
+      <div id="schedule-create-msg"></div>
     </div>
 
     <div class="card">
-      <h3>Scheduled / Recent Matches</h3>
-      <div id="match-list">Connect Supabase first.</div>
+      <h3>Match Schedule
+        <span class="pill not-played">Not Played</span>
+        <span class="pill ongoing">Ongoing</span>
+        <span class="pill finished">Finished</span>
+      </h3>
+      <div id="schedule-list">Connect Supabase first.</div>
     </div>
   </div>
 
@@ -311,7 +427,7 @@
   <!-- LEADERBOARD TAB -->
   <div class="tab" id="tab-leaderboard">
     <div class="card">
-      <h3>Team Standings <span class="badge excluded">Excludes 2 MD E / 2 WD E / 2 MXD E</span></h3>
+      <h3>Team Standings <span class="badge excluded">Excludes bracket-only categories</span></h3>
       <table>
         <thead><tr><th>#</th><th>Team</th><th>Wins</th><th>Games Played</th></tr></thead>
         <tbody id="leaderboard-body"></tbody>
@@ -328,11 +444,7 @@
     <div class="card">
       <h3>Elimination Bracket</h3>
       <label>Category</label>
-      <select id="b-category">
-        <option value="2 MD E">2 MD E</option>
-        <option value="2 WD E">2 WD E</option>
-        <option value="2 MXD E">2 MXD E</option>
-      </select>
+      <select id="b-category"></select>
       <div id="bracket-view" style="margin-top:16px;"></div>
     </div>
   </div>
@@ -343,6 +455,7 @@
 let db = null;
 let categories = [];
 let teams = [];
+let players = [];
 
 // ---------- TAB NAVIGATION ----------
 document.querySelectorAll('nav button').forEach(btn=>{
@@ -354,7 +467,8 @@ document.querySelectorAll('nav button').forEach(btn=>{
     if(btn.dataset.tab === 'leaderboard') loadLeaderboard();
     if(btn.dataset.tab === 'bracket') loadBracket();
     if(btn.dataset.tab === 'score') loadMatchesForScoring();
-    if(btn.dataset.tab === 'players') loadMatchList();
+    if(btn.dataset.tab === 'schedule') loadScheduleList();
+    if(btn.dataset.tab === 'players') refreshRosterLists();
   });
 });
 
@@ -380,7 +494,6 @@ async function connectSupabase(){
   try{
     db = window.supabase.createClient(url, key);
 
-    // Actually test the connection with a real query before declaring success
     const { error } = await db.from('teams').select('id').limit(1);
 
     if(error){
@@ -413,9 +526,33 @@ window.addEventListener('DOMContentLoaded', ()=>{
 
 async function initApp(){
   await loadTeamsAndCategories();
-  await loadMatchList();
+  await loadPlayers();
+  refreshRosterLists();
+  populateScheduleDropdowns();
+  await loadScheduleList();
 }
 
+// ---------- RESET ----------
+async function resetDemoData(){
+  const msg = document.getElementById('reset-msg');
+  if(!db){ msg.innerHTML = '<div class="msg err">Connect Supabase first.</div>'; return; }
+
+  const confirmed = confirm('This will permanently delete all scheduled matches and scores (teams, categories, and players are kept). Continue?');
+  if(!confirmed) return;
+
+  msg.innerHTML = '<div class="msg ok">Resetting...</div>';
+
+  const { error: mpErr } = await db.from('match_players').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  if(mpErr){ msg.innerHTML = '<div class="msg err">Error clearing match players: '+mpErr.message+'</div>'; return; }
+
+  const { error: mErr } = await db.from('matches').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  if(mErr){ msg.innerHTML = '<div class="msg err">Error clearing matches: '+mErr.message+'</div>'; return; }
+
+  msg.innerHTML = '<div class="msg ok">All matches and scores cleared. Ready for a fresh demo.</div>';
+  loadScheduleList();
+}
+
+// ---------- ROSTER DATA LOADING ----------
 async function loadTeamsAndCategories(){
   const { data: teamData, error: teamErr } = await db.from('teams').select('*').order('name');
   const { data: catData, error: catErr } = await db.from('categories').select('*').order('name');
@@ -425,32 +562,137 @@ async function loadTeamsAndCategories(){
   }
   teams = teamData;
   categories = catData;
+  document.getElementById('setup-msg').innerHTML = '<div class="msg ok">Connected and ready.</div>';
+}
 
-  const teamOptsA = document.getElementById('p-teamA');
-  const teamOptsB = document.getElementById('p-teamB');
-  teamOptsA.innerHTML = teamOptsB.innerHTML = teams.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+async function loadPlayers(){
+  const { data, error } = await db.from('players').select('*, teams(name)').order('name');
+  if(!error) players = data;
+}
 
-  const catSelect = document.getElementById('p-category');
+function refreshRosterLists(){
+  // Team dropdown (used when adding a player)
+  const teamSelect = document.getElementById('new-player-team');
+  teamSelect.innerHTML = teams.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+
+  // Team list display
+  document.getElementById('team-list').innerHTML = teams.length
+    ? teams.map(t=>`<div class="list-item">${t.name}</div>`).join('')
+    : '<p class="hint">No teams yet.</p>';
+
+  // Category list display
+  document.getElementById('cat-list').innerHTML = categories.length
+    ? categories.map(c=>`<div class="list-item">${c.name} ${c.counts_toward_team_total ? '' : '<span class="badge excluded">bracket only</span>'}</div>`).join('')
+    : '<p class="hint">No categories yet.</p>';
+
+  // Player list display
+  document.getElementById('player-list').innerHTML = players.length
+    ? players.map(p=>`<div class="list-item">${p.name} <span style="color:var(--gray);font-size:0.8rem;">${p.teams ? p.teams.name : 'No team'}</span></div>`).join('')
+    : '<p class="hint">No players yet.</p>';
+}
+
+async function addTeam(){
+  const msg = document.getElementById('team-msg');
+  if(!db){ msg.innerHTML = '<div class="msg err">Connect Supabase first (Setup tab).</div>'; return; }
+  const name = document.getElementById('new-team-name').value.trim();
+  if(!name){ msg.innerHTML = '<div class="msg err">Enter a team name.</div>'; return; }
+
+  const { error } = await db.from('teams').insert({ name });
+  if(error){ msg.innerHTML = '<div class="msg err">Error: '+error.message+'</div>'; return; }
+
+  msg.innerHTML = '<div class="msg ok">Team added.</div>';
+  document.getElementById('new-team-name').value = '';
+  await loadTeamsAndCategories();
+  refreshRosterLists();
+  populateScheduleDropdowns();
+}
+
+async function addCategory(){
+  const msg = document.getElementById('cat-msg');
+  if(!db){ msg.innerHTML = '<div class="msg err">Connect Supabase first (Setup tab).</div>'; return; }
+  const name = document.getElementById('new-cat-name').value.trim();
+  const isBracket = document.getElementById('new-cat-bracket').checked;
+  if(!name){ msg.innerHTML = '<div class="msg err">Enter a category name.</div>'; return; }
+
+  const { error } = await db.from('categories').insert({
+    name,
+    counts_toward_team_total: !isBracket,
+    is_bracket: isBracket
+  });
+  if(error){ msg.innerHTML = '<div class="msg err">Error: '+error.message+'</div>'; return; }
+
+  msg.innerHTML = '<div class="msg ok">Category added.</div>';
+  document.getElementById('new-cat-name').value = '';
+  document.getElementById('new-cat-bracket').checked = false;
+  await loadTeamsAndCategories();
+  refreshRosterLists();
+  populateScheduleDropdowns();
+}
+
+async function addPlayer(){
+  const msg = document.getElementById('player-msg');
+  if(!db){ msg.innerHTML = '<div class="msg err">Connect Supabase first (Setup tab).</div>'; return; }
+  const name = document.getElementById('new-player-name').value.trim();
+  const teamId = document.getElementById('new-player-team').value;
+  if(!name){ msg.innerHTML = '<div class="msg err">Enter a player name.</div>'; return; }
+  if(!teamId){ msg.innerHTML = '<div class="msg err">Add a team first.</div>'; return; }
+
+  const { error } = await db.from('players').insert({ name, team_id: teamId });
+  if(error){ msg.innerHTML = '<div class="msg err">Error: '+error.message+'</div>'; return; }
+
+  msg.innerHTML = '<div class="msg ok">Player added.</div>';
+  document.getElementById('new-player-name').value = '';
+  await loadPlayers();
+  refreshRosterLists();
+}
+
+// ---------- SCHEDULE TAB ----------
+function populateScheduleDropdowns(){
+  const catSelect = document.getElementById('sc-category');
   catSelect.innerHTML = categories.map(c=>{
     const tag = c.counts_toward_team_total ? '' : ' (bracket only)';
     return `<option value="${c.id}">${c.name}${tag}</option>`;
   }).join('');
 
-  document.getElementById('setup-msg').innerHTML = '<div class="msg ok">Connected and ready.</div>';
+  const teamA = document.getElementById('sc-teamA');
+  const teamB = document.getElementById('sc-teamB');
+  teamA.innerHTML = teamB.innerHTML = teams.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+
+  const bCatSelect = document.getElementById('b-category');
+  const bracketCats = categories.filter(c=>c.is_bracket);
+  bCatSelect.innerHTML = bracketCats.length
+    ? bracketCats.map(c=>`<option value="${c.name}">${c.name}</option>`).join('')
+    : '<option value="">No bracket categories yet</option>';
+
+  populateTeamPlayers('A');
+  populateTeamPlayers('B');
 }
 
-// ---------- MATCH CREATION ----------
+function populateTeamPlayers(side){
+  const teamSelect = document.getElementById('sc-team'+side);
+  const teamId = teamSelect.value;
+  const teamPlayers = players.filter(p=>p.team_id === teamId);
+
+  const p1 = document.getElementById('sc-player'+side+'1');
+  const p2 = document.getElementById('sc-player'+side+'2');
+  const options = '<option value="">— none —</option>' + teamPlayers.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  p1.innerHTML = options;
+  p2.innerHTML = options;
+}
+
 async function createMatch(){
-  const msg = document.getElementById('players-msg');
+  const msg = document.getElementById('schedule-create-msg');
   if(!db){ msg.innerHTML = '<div class="msg err">Connect Supabase first (Setup tab).</div>'; return; }
 
-  const categoryId = document.getElementById('p-category').value;
-  const court = document.getElementById('p-court').value;
-  const teamA = document.getElementById('p-teamA').value;
-  const teamB = document.getElementById('p-teamB').value;
-  const playersA = document.getElementById('p-playersA').value.trim();
-  const playersB = document.getElementById('p-playersB').value.trim();
-  const round = document.getElementById('p-round').value;
+  const categoryId = document.getElementById('sc-category').value;
+  const round = document.getElementById('sc-round').value;
+  const court = document.getElementById('sc-court').value;
+  const teamA = document.getElementById('sc-teamA').value;
+  const teamB = document.getElementById('sc-teamB').value;
+  const playerA1 = document.getElementById('sc-playerA1').value;
+  const playerA2 = document.getElementById('sc-playerA2').value;
+  const playerB1 = document.getElementById('sc-playerB1').value;
+  const playerB2 = document.getElementById('sc-playerB2').value;
 
   if(teamA === teamB){
     msg.innerHTML = '<div class="msg err">Team A and Team B must be different.</div>';
@@ -472,44 +714,71 @@ async function createMatch(){
   }
 
   const playerRows = [];
-  playersA.split(',').map(n=>n.trim()).filter(Boolean).forEach(name=>{
-    playerRows.push({ match_id: match.id, player_name: name, side: 'A' });
+  [playerA1, playerA2].filter(Boolean).forEach(pid=>{
+    const p = players.find(pl=>pl.id===pid);
+    if(p) playerRows.push({ match_id: match.id, player_id: p.id, player_name: p.name, side: 'A' });
   });
-  playersB.split(',').map(n=>n.trim()).filter(Boolean).forEach(name=>{
-    playerRows.push({ match_id: match.id, player_name: name, side: 'B' });
+  [playerB1, playerB2].filter(Boolean).forEach(pid=>{
+    const p = players.find(pl=>pl.id===pid);
+    if(p) playerRows.push({ match_id: match.id, player_id: p.id, player_name: p.name, side: 'B' });
   });
   if(playerRows.length){
     await db.from('match_players').insert(playerRows);
   }
 
-  msg.innerHTML = '<div class="msg ok">Match created!</div>';
-  document.getElementById('p-playersA').value = '';
-  document.getElementById('p-playersB').value = '';
-  loadMatchList();
+  msg.innerHTML = '<div class="msg ok">Match added to schedule!</div>';
+  loadScheduleList();
 }
 
-async function loadMatchList(){
-  const container = document.getElementById('match-list');
+async function loadScheduleList(){
+  const container = document.getElementById('schedule-list');
   if(!db){ container.innerHTML = 'Connect Supabase first.'; return; }
 
   const { data, error } = await db
     .from('matches')
-    .select('*, categories(name), teamA:team_a_id(name), teamB:team_b_id(name)')
-    .order('created_at', { ascending: false })
-    .limit(20);
+    .select('*, categories(name), teamA:team_a_id(name), teamB:team_b_id(name), match_players(player_name, side)')
+    .order('created_at', { ascending: false });
 
   if(error){ container.innerHTML = 'Error loading matches: '+error.message; return; }
-  if(!data.length){ container.innerHTML = 'No matches yet.'; return; }
+  if(!data.length){ container.innerHTML = '<p class="hint">No matches scheduled yet.</p>'; return; }
 
   container.innerHTML = data.map(m=>{
-    const statusLabel = m.status === 'completed'
-      ? `<span class="winner">${m.team_a_score}-${m.team_b_score}</span>`
-      : `<em style="color:var(--gray)">${m.status}</em>`;
-    return `<div class="match-item">
-      <strong>${m.categories.name}</strong> · <span class="court-tag">Court ${m.court_number}</span> · ${m.round !== 'round_robin' ? m.round.toUpperCase() : ''}<br>
-      ${m.teamA.name} vs ${m.teamB.name} — ${statusLabel}
+    const playersA = m.match_players.filter(mp=>mp.side==='A').map(mp=>mp.player_name).join(' / ') || '—';
+    const playersB = m.match_players.filter(mp=>mp.side==='B').map(mp=>mp.player_name).join(' / ') || '—';
+
+    let pillClass = 'not-played', pillLabel = 'Not Played';
+    if(m.status === 'in_progress'){ pillClass = 'ongoing'; pillLabel = 'Ongoing'; }
+    if(m.status === 'completed'){ pillClass = 'finished'; pillLabel = 'Finished'; }
+
+    const scoreLine = m.status === 'completed' ? `<strong>${m.team_a_score} - ${m.team_b_score}</strong>` : '';
+    const roundTag = m.round !== 'round_robin' ? `<span class="badge">${m.round.toUpperCase()}</span>` : '';
+
+    let actionBtn = '';
+    if(m.status === 'scheduled'){
+      actionBtn = `<button class="small ghost" onclick="startMatch('${m.id}')">Start Match</button>`;
+    } else if(m.status === 'in_progress'){
+      actionBtn = `<button class="small" onclick="sendPrompt('Enter the score for ${m.teamA.name} vs ${m.teamB.name}')">Go to Score Entry →</button>`;
+    }
+
+    return `<div class="schedule-card">
+      <div class="top-row">
+        <span class="teams">${m.teamA.name} vs ${m.teamB.name}</span>
+        <span class="pill ${pillClass}">${pillLabel}</span>
+      </div>
+      <div class="meta">
+        ${m.categories.name} ${roundTag} · Court ${m.court_number}<br>
+        ${m.teamA.name}: ${playersA} &nbsp;|&nbsp; ${m.teamB.name}: ${playersB}
+        ${scoreLine ? '<br>Score: '+scoreLine : ''}
+      </div>
+      <div class="actions">${actionBtn}</div>
     </div>`;
   }).join('');
+}
+
+async function startMatch(matchId){
+  if(!db) return;
+  const { error } = await db.from('matches').update({ status: 'in_progress' }).eq('id', matchId);
+  if(!error) loadScheduleList();
 }
 
 // ---------- SCORE ENTRY ----------
@@ -520,7 +789,7 @@ async function loadMatchesForScoring(){
   const { data, error } = await db
     .from('matches')
     .select('*, categories(name), teamA:team_a_id(name), teamB:team_b_id(name)')
-    .eq('status', 'scheduled')
+    .in('status', ['scheduled','in_progress'])
     .order('created_at', { ascending: false });
 
   if(error || !data.length){
@@ -604,7 +873,6 @@ async function loadLeaderboard(){
     </tr>
   `).join('');
 
-  // category breakdown (completed matches grouped by category, showing excluded flag)
   const { data: matchData } = await db
     .from('matches')
     .select('*, categories(name, counts_toward_team_total), teamA:team_a_id(name), teamB:team_b_id(name), winner:winner_team_id(name)')
@@ -621,7 +889,7 @@ async function loadLeaderboard(){
     const badge = m.categories.counts_toward_team_total
       ? ''
       : '<span class="badge excluded">excluded from total</span>';
-    return `<div class="match-item">
+    return `<div class="list-item" style="display:block;">
       <strong>${m.categories.name}</strong> ${badge}<br>
       ${m.teamA.name} ${m.team_a_score} - ${m.team_b_score} ${m.teamB.name}
       → <span class="winner">${m.winner ? m.winner.name : '—'} won</span>
@@ -631,11 +899,12 @@ async function loadLeaderboard(){
 
 // ---------- BRACKET ----------
 async function loadBracket(){
-  const catName = document.getElementById('b-category').value;
   document.getElementById('b-category').onchange = loadBracket;
+  const catName = document.getElementById('b-category').value;
 
   const view = document.getElementById('bracket-view');
   if(!db){ view.innerHTML = 'Connect Supabase first.'; return; }
+  if(!catName){ view.innerHTML = '<p class="hint">Add a bracket-only category first (Players tab).</p>'; return; }
 
   const cat = categories.find(c=>c.name === catName);
   if(!cat){ view.innerHTML = 'Category not loaded yet.'; return; }
@@ -665,7 +934,7 @@ async function loadBracket(){
 
   let html = '';
   html += `<div class="bracket-round"><h4>Semifinal</h4>`;
-  html += semis.length ? semis.map(renderMatch).join('') : '<p style="color:var(--gray);font-size:0.85rem;">No semifinal matches created yet. Add one in the Players tab with round = Semifinal.</p>';
+  html += semis.length ? semis.map(renderMatch).join('') : '<p style="color:var(--gray);font-size:0.85rem;">No semifinal matches created yet. Add one in the Schedule tab with round = Semifinal.</p>';
   html += `</div>`;
 
   html += `<div class="bracket-round"><h4>Final</h4>`;
