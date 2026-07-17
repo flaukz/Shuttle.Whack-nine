@@ -432,6 +432,11 @@
       <div id="e-level-breakdown"></div>
     </div>
     <div class="card">
+      <h3>Semifinal &amp; Finals</h3>
+      <p class="hint">Matchups and results — scores are kept in Score Entry and the Bracket tab.</p>
+      <div id="semis-finals-panel"></div>
+    </div>
+    <div class="card">
       <h3>All Completed Matches (by category)</h3>
       <div id="category-breakdown"></div>
     </div>
@@ -1100,6 +1105,8 @@ async function loadLeaderboard(){
 
   renderStandingsTable(mainBody, mainStats);
 
+  await loadSemisFinalsPanel();
+
   eContainer.innerHTML = E_LEVEL_CATEGORIES.map(catName=>{
     const rows = Object.values(perCategoryStats[catName]).sort((a,b) => b.wins - a.wins || b.score - a.score);
     const anyPlayed = rows.some(r=>r.games > 0);
@@ -1141,6 +1148,40 @@ async function loadLeaderboard(){
       → <span class="winner">${m.winner ? m.winner.name : '—'} won</span>
     </div>`;
   }).join('');
+}
+
+async function loadSemisFinalsPanel(){
+  const panel = document.getElementById('semis-finals-panel');
+  if(!db) return;
+
+  const { data, error } = await db
+    .from('matches')
+    .select('*, categories(name), teamA:team_a_id(name), teamB:team_b_id(name), winner:winner_team_id(name)')
+    .in('round', ['semifinal', 'final'])
+    .order('round');
+
+  if(error){ panel.innerHTML = `<p class="hint">Error: ${error.message}</p>`; return; }
+  if(!data || !data.length){ panel.innerHTML = '<p class="hint">No semifinal or final matches scheduled yet.</p>'; return; }
+
+  function renderRound(roundKey, label){
+    const matches = data.filter(m=>m.round === roundKey);
+    if(!matches.length) return '';
+    const rows = matches.map(m=>{
+      let pillClass = 'not-played', pillLabel = 'Not Played';
+      if(m.status === 'in_progress'){ pillClass = 'ongoing'; pillLabel = 'Ongoing'; }
+      if(m.status === 'completed'){ pillClass = 'finished'; pillLabel = 'Finished'; }
+      const winnerLine = m.status === 'completed' && m.winner
+        ? `<br><span class="winner">Winner: ${m.winner.name}</span>`
+        : '';
+      return `<div class="bracket-match">
+        <span>${m.categories.name}<br><strong>${m.teamA.name} vs ${m.teamB.name}</strong>${winnerLine}</span>
+        <span class="pill ${pillClass}">${pillLabel}</span>
+      </div>`;
+    }).join('');
+    return `<div class="bracket-round"><h4>${label}</h4>${rows}</div>`;
+  }
+
+  panel.innerHTML = renderRound('semifinal', 'Semifinal') + renderRound('final', 'Final');
 }
 
 function tallyMatch(statsObj, m){
