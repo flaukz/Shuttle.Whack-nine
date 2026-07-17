@@ -428,11 +428,8 @@
     </div>
     <div class="card">
       <h3>E-Level Team Standings <span class="badge">1 MD E · 2 MD E · 1 WD E · 2 WD E · 1 MXD E · 2 MXD E</span></h3>
-      <p class="hint">Combines all E-level categories, including the bracket-only ones.</p>
-      <table>
-        <thead><tr><th>#</th><th>Team</th><th>Wins</th><th>Games Played</th><th>Score</th></tr></thead>
-        <tbody id="e-level-leaderboard-body"></tbody>
-      </table>
+      <p class="hint">Standings per individual E-level category, so you can see which team leads each bracket and how many points they've accumulated in it.</p>
+      <div id="e-level-breakdown"></div>
     </div>
     <div class="card">
       <h3>All Completed Matches (by category)</h3>
@@ -1038,8 +1035,8 @@ const E_LEVEL_CATEGORIES = ['1 MD E', '2 MD E', '1 WD E', '2 WD E', '1 MXD E', '
 
 async function loadLeaderboard(){
   const mainBody = document.getElementById('leaderboard-body');
-  const eBody = document.getElementById('e-level-leaderboard-body');
-  if(!db){ mainBody.innerHTML = ''; eBody.innerHTML = ''; return; }
+  const eContainer = document.getElementById('e-level-breakdown');
+  if(!db){ mainBody.innerHTML = ''; eContainer.innerHTML = ''; return; }
 
   const { data: matchData, error } = await db
     .from('matches')
@@ -1052,28 +1049,53 @@ async function loadLeaderboard(){
     return;
   }
 
+  // Main standings (categories that count toward the team total)
   const mainStats = {};
-  const eStats = {};
-  teams.forEach(t=>{
-    mainStats[t.id] = { name: t.name, wins: 0, games: 0, score: 0 };
-    eStats[t.id] = { name: t.name, wins: 0, games: 0, score: 0 };
+  teams.forEach(t=>{ mainStats[t.id] = { name: t.name, wins: 0, games: 0, score: 0 }; });
+
+  // Per-category standings, one stats object per E-level category
+  const perCategoryStats = {};
+  E_LEVEL_CATEGORIES.forEach(catName=>{
+    perCategoryStats[catName] = {};
+    teams.forEach(t=>{ perCategoryStats[catName][t.id] = { name: t.name, wins: 0, games: 0, score: 0 }; });
   });
 
   (matchData || []).forEach(m=>{
     const catName = m.categories.name;
-    const countsMain = m.categories.counts_toward_team_total;
-    const isELevel = E_LEVEL_CATEGORIES.includes(catName);
-
-    if(countsMain){
+    if(m.categories.counts_toward_team_total){
       tallyMatch(mainStats, m);
     }
-    if(isELevel){
-      tallyMatch(eStats, m);
+    if(perCategoryStats[catName]){
+      tallyMatch(perCategoryStats[catName], m);
     }
   });
 
   renderStandingsTable(mainBody, mainStats);
-  renderStandingsTable(eBody, eStats);
+
+  eContainer.innerHTML = E_LEVEL_CATEGORIES.map(catName=>{
+    const rows = Object.values(perCategoryStats[catName]).sort((a,b) => b.wins - a.wins || b.score - a.score);
+    const anyPlayed = rows.some(r=>r.games > 0);
+    const rowsHtml = rows.map((r,i)=>`
+      <tr>
+        <td class="rank">${i+1}</td>
+        <td>${r.name}</td>
+        <td><strong>${r.wins}</strong></td>
+        <td>${r.games}</td>
+        <td>${r.score}</td>
+      </tr>
+    `).join('');
+
+    return `<div style="margin-bottom:18px;">
+      <div style="font-size:0.85rem; font-weight:700; color:var(--court-green); margin-bottom:6px;">${catName}</div>
+      ${anyPlayed
+        ? `<table>
+            <thead><tr><th>#</th><th>Team</th><th>Wins</th><th>Games Played</th><th>Score</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>`
+        : '<p class="hint">No completed matches yet in this category.</p>'
+      }
+    </div>`;
+  }).join('');
 
   const breakdown = document.getElementById('category-breakdown');
   if(!matchData || !matchData.length){
