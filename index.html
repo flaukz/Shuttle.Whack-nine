@@ -530,10 +530,17 @@ async function initApp(){
 }
 
 const SEMIFINAL_MATCHUP_CATEGORIES = ['1 MD E vs 2 MD E', '1 WD E vs 2 WD E', '1 MXD E vs 2 MXD E'];
+const FINAL_CATEGORIES = ['MD Final', 'WD Final', 'MXD Final'];
+const BRACKET_GROUPS = [
+  { key: 'MD', label: "Men's Doubles (MD)", semiCat: '1 MD E vs 2 MD E', finalCat: 'MD Final' },
+  { key: 'WD', label: "Women's Doubles (WD)", semiCat: '1 WD E vs 2 WD E', finalCat: 'WD Final' },
+  { key: 'MXD', label: 'Mixed Doubles (MXD)', semiCat: '1 MXD E vs 2 MXD E', finalCat: 'MXD Final' }
+];
 
 async function ensureMatchupCategories(){
   const existingNames = categories.map(c=>c.name);
-  const missing = SEMIFINAL_MATCHUP_CATEGORIES.filter(n=>!existingNames.includes(n));
+  const allRequired = [...SEMIFINAL_MATCHUP_CATEGORIES, ...FINAL_CATEGORIES];
+  const missing = allRequired.filter(n=>!existingNames.includes(n));
   if(missing.length){
     const rows = missing.map(n=>({ name: n, counts_toward_team_total: false, is_bracket: true }));
     const { error } = await db.from('categories').insert(rows);
@@ -736,10 +743,7 @@ function populateScheduleDropdowns(){
   teamA.innerHTML = teamB.innerHTML = teams.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
 
   const bCatSelect = document.getElementById('b-category');
-  const bracketCats = categories.filter(c=>c.is_bracket);
-  bCatSelect.innerHTML = bracketCats.length
-    ? bracketCats.map(c=>`<option value="${c.name}">${c.name}</option>`).join('')
-    : '<option value="">No bracket categories yet</option>';
+  bCatSelect.innerHTML = BRACKET_GROUPS.map(g=>`<option value="${g.key}">${g.label}</option>`).join('');
 
   populateTeamPlayers('A');
   populateTeamPlayers('B');
@@ -752,17 +756,24 @@ function updateCategoryOptionsForRound(){
 
   if(round === 'round_robin'){
     label.textContent = 'Category';
-    const roundRobinCats = categories.filter(c => !SEMIFINAL_MATCHUP_CATEGORIES.includes(c.name));
+    const excluded = [...SEMIFINAL_MATCHUP_CATEGORIES, ...FINAL_CATEGORIES];
+    const roundRobinCats = categories.filter(c => !excluded.includes(c.name));
     catSelect.innerHTML = roundRobinCats.map(c=>{
       const tag = c.counts_toward_team_total ? '' : ' (bracket only)';
       return `<option value="${c.id}">${c.name}${tag}</option>`;
     }).join('');
-  } else {
+  } else if(round === 'semifinal'){
     label.textContent = 'Matchup';
     const matchupCats = categories.filter(c => SEMIFINAL_MATCHUP_CATEGORIES.includes(c.name));
     catSelect.innerHTML = matchupCats.length
       ? matchupCats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')
       : '<option value="">Reconnect to auto-create matchup categories</option>';
+  } else {
+    label.textContent = 'Bracket';
+    const finalCats = categories.filter(c => FINAL_CATEGORIES.includes(c.name));
+    catSelect.innerHTML = finalCats.length
+      ? finalCats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')
+      : '<option value="">Reconnect to auto-create final categories</option>';
   }
 }
 
@@ -1213,19 +1224,23 @@ function renderStandingsTable(tbodyEl, statsObj){
 // ---------- BRACKET ----------
 async function loadBracket(){
   document.getElementById('b-category').onchange = loadBracket;
-  const catName = document.getElementById('b-category').value;
+  const groupKey = document.getElementById('b-category').value;
 
   const view = document.getElementById('bracket-view');
   if(!db){ view.innerHTML = 'Connect Supabase first.'; return; }
-  if(!catName){ view.innerHTML = '<p class="hint">Add a bracket-only category first (Players tab).</p>'; return; }
+  if(!groupKey){ view.innerHTML = '<p class="hint">No bracket group selected.</p>'; return; }
 
-  const cat = categories.find(c=>c.name === catName);
-  if(!cat){ view.innerHTML = 'Category not loaded yet.'; return; }
+  const group = BRACKET_GROUPS.find(g=>g.key === groupKey);
+  const semiCat = categories.find(c=>c.name === group.semiCat);
+  const finalCat = categories.find(c=>c.name === group.finalCat);
+  const categoryIds = [semiCat, finalCat].filter(Boolean).map(c=>c.id);
+
+  if(!categoryIds.length){ view.innerHTML = '<p class="hint">Bracket categories not loaded yet — try reconnecting.</p>'; return; }
 
   const { data, error } = await db
     .from('matches')
     .select('*, teamA:team_a_id(name), teamB:team_b_id(name), winner:winner_team_id(name)')
-    .eq('category_id', cat.id)
+    .in('category_id', categoryIds)
     .in('round', ['semifinal','final'])
     .order('round');
 
@@ -1246,11 +1261,11 @@ async function loadBracket(){
   }
 
   let html = '';
-  html += `<div class="bracket-round"><h4>Semifinal</h4>`;
+  html += `<div class="bracket-round"><h4>Semifinal (${group.semiCat})</h4>`;
   html += semis.length ? semis.map(renderMatch).join('') : '<p style="color:var(--gray);font-size:0.85rem;">No semifinal matches created yet. Add one in the Schedule tab with round = Semifinal.</p>';
   html += `</div>`;
 
-  html += `<div class="bracket-round"><h4>Final</h4>`;
+  html += `<div class="bracket-round"><h4>Final (${group.finalCat})</h4>`;
   html += finals.length ? finals.map(renderMatch).join('') : '<p style="color:var(--gray);font-size:0.85rem;">No final match created yet.</p>';
   html += `</div>`;
 
