@@ -304,11 +304,8 @@
   <!-- PLAYERS TAB (roster management only) -->
   <div class="tab" id="tab-players">
     <div class="card">
-      <h3>Add Team</h3>
-      <label>Team Name</label>
-      <input id="new-team-name" placeholder="e.g. Falcon">
-      <button class="primary" onclick="addTeam()">Add Team</button>
-      <div id="team-msg"></div>
+      <h3>Teams</h3>
+      <p class="hint">Teams are fixed for this league.</p>
       <div id="team-list" style="margin-top:12px;"></div>
     </div>
 
@@ -575,22 +572,6 @@ function refreshRosterLists(){
   document.getElementById('player-list').innerHTML = players.length
     ? players.map(p=>`<div class="list-item">${p.name} <span style="color:var(--gray);font-size:0.8rem;">${p.teams ? p.teams.name : 'No team'}</span></div>`).join('')
     : '<p class="hint">No players yet.</p>';
-}
-
-async function addTeam(){
-  const msg = document.getElementById('team-msg');
-  if(!db){ msg.innerHTML = '<div class="msg err">Connect Supabase first (Setup tab).</div>'; return; }
-  const name = document.getElementById('new-team-name').value.trim();
-  if(!name){ msg.innerHTML = '<div class="msg err">Enter a team name.</div>'; return; }
-
-  const { error } = await db.from('teams').insert({ name });
-  if(error){ msg.innerHTML = '<div class="msg err">Error: '+error.message+'</div>'; return; }
-
-  msg.innerHTML = '<div class="msg ok">Team added.</div>';
-  document.getElementById('new-team-name').value = '';
-  await loadTeamsAndCategories();
-  refreshRosterLists();
-  populateScheduleDropdowns();
 }
 
 async function addCategory(){
