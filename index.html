@@ -288,13 +288,8 @@
   <!-- SETUP TAB -->
   <div class="tab active" id="tab-setup">
     <div class="card setup-box">
-      <h3>Connect to Supabase</h3>
-      <p style="font-size:0.85rem;color:var(--gray)">Paste your project URL and anon key (from Supabase → Settings → API). This is stored only in your browser.</p>
-      <label>Supabase URL</label>
-      <input id="sb-url" placeholder="https://xxxx.supabase.co">
-      <label>Anon Public Key</label>
-      <input id="sb-key" placeholder="eyJhbGciOi...">
-      <button class="primary" onclick="connectSupabase()">Connect</button>
+      <h3>Database Connection</h3>
+      <p style="font-size:0.85rem;color:var(--gray)">This app connects to your Supabase project automatically — nothing to enter.</p>
       <div id="setup-msg"></div>
     </div>
 
@@ -452,6 +447,12 @@
 </main>
 
 <script>
+// Hardcoded so the app connects automatically without re-entering credentials each time.
+// This is the public "anon" key, which is safe to expose client-side (it relies on
+// Supabase Row Level Security policies, not secrecy, to control access).
+const SUPABASE_URL = 'https://iqjzoirgqquoxsmluqvx.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxanpvaXJncXF1b3hzbWx1cXZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMDE1NzksImV4cCI6MjA5OTg3NzU3OX0.WibXgbTlPlui8bqf0-iaf_ACRYLRm67EY4-R1ufx2yA';
+
 let db = null;
 let categories = [];
 let teams = [];
@@ -472,19 +473,12 @@ document.querySelectorAll('nav button').forEach(btn=>{
   });
 });
 
-// ---------- SETUP ----------
+// ---------- SETUP (auto-connect, no user input needed) ----------
 async function connectSupabase(){
-  const url = document.getElementById('sb-url').value.trim();
-  const key = document.getElementById('sb-key').value.trim();
   const msg = document.getElementById('setup-msg');
 
-  if(!url || !key){
-    msg.innerHTML = '<div class="msg err">Please enter both URL and key.</div>';
-    return;
-  }
-
   if(typeof window.supabase === 'undefined' || typeof window.supabase.createClient !== 'function'){
-    msg.innerHTML = '<div class="msg err">The Supabase library did not load. Check your internet connection and reload the page, then try again.</div>';
+    msg.innerHTML = '<div class="msg err">The Supabase library did not load. Check your internet connection and reload the page.</div>';
     console.error('window.supabase is not available — CDN script may have failed to load.');
     return;
   }
@@ -492,20 +486,18 @@ async function connectSupabase(){
   msg.innerHTML = '<div class="msg ok">Connecting...</div>';
 
   try{
-    db = window.supabase.createClient(url, key);
+    db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const { error } = await db.from('teams').select('id').limit(1);
 
     if(error){
-      msg.innerHTML = '<div class="msg err">Connected to Supabase, but the query failed: '+error.message+'<br><br>This usually means the SQL schema hasn\'t been run yet, or the URL/key is wrong.</div>';
+      msg.innerHTML = '<div class="msg err">Connected to Supabase, but the query failed: '+error.message+'<br><br>This usually means the SQL schema hasn\'t been run yet.</div>';
       console.error('Supabase test query error:', error);
       db = null;
       return;
     }
 
-    localStorage.setItem('sb-url', url);
-    localStorage.setItem('sb-key', key);
-    msg.innerHTML = '<div class="msg ok">Connected! Loading data...</div>';
+    msg.innerHTML = '<div class="msg ok">Connected and ready.</div>';
     initApp();
   }catch(e){
     msg.innerHTML = '<div class="msg err">Connection failed: '+e.message+'</div>';
@@ -513,15 +505,9 @@ async function connectSupabase(){
   }
 }
 
-// auto-reconnect from saved credentials
+// Connect automatically as soon as the page loads
 window.addEventListener('DOMContentLoaded', ()=>{
-  const url = localStorage.getItem('sb-url');
-  const key = localStorage.getItem('sb-key');
-  if(url && key){
-    document.getElementById('sb-url').value = url;
-    document.getElementById('sb-key').value = key;
-    connectSupabase();
-  }
+  connectSupabase();
 });
 
 async function initApp(){
