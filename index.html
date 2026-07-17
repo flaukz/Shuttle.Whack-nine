@@ -337,7 +337,7 @@
   <!-- TOURNAMENT SCHEDULE TAB -->
   <div class="tab" id="tab-schedule">
     <div class="card">
-      <h3>Schedule a Match</h3>
+      <h3 id="schedule-form-title">Schedule a Match</h3>
       <label>Category</label>
       <select id="sc-category"></select>
 
@@ -376,7 +376,8 @@
         </div>
       </div>
 
-      <button class="primary" onclick="createMatch()">Add to Schedule</button>
+      <button class="primary" id="schedule-submit-btn" onclick="createMatch()">Add to Schedule</button>
+      <button class="small ghost hidden" id="schedule-cancel-btn" style="margin-top:8px; width:100%;" onclick="cancelEdit()">Cancel Edit</button>
       <div id="schedule-create-msg"></div>
     </div>
 
@@ -454,6 +455,7 @@ let db = null;
 let categories = [];
 let teams = [];
 let players = [];
+let editingMatchId = null;
 
 // ---------- TAB NAVIGATION ----------
 document.querySelectorAll('nav button').forEach(btn=>{
@@ -666,35 +668,112 @@ async function createMatch(){
     return;
   }
 
-  const { data: match, error } = await db.from('matches').insert({
-    category_id: categoryId,
-    court_number: court,
-    team_a_id: teamA,
-    team_b_id: teamB,
-    round: round,
-    status: 'scheduled'
-  }).select().single();
+  let matchId;
 
-  if(error){
-    msg.innerHTML = '<div class="msg err">Error: '+error.message+'</div>';
-    return;
+  if(editingMatchId){
+    // Update existing match
+    const { error } = await db.from('matches').update({
+      category_id: categoryId,
+      court_number: court,
+      team_a_id: teamA,
+      team_b_id: teamB,
+      round: round
+    }).eq('id', editingMatchId);
+
+    if(error){
+      msg.innerHTML = '<div class="msg err">Error: '+error.message+'</div>';
+      return;
+    }
+    matchId = editingMatchId;
+
+    // Replace the player assignments
+    await db.from('match_players').delete().eq('match_id', matchId);
+  } else {
+    // Create new match
+    const { data: match, error } = await db.from('matches').insert({
+      category_id: categoryId,
+      court_number: court,
+      team_a_id: teamA,
+      team_b_id: teamB,
+      round: round,
+      status: 'scheduled'
+    }).select().single();
+
+    if(error){
+      msg.innerHTML = '<div class="msg err">Error: '+error.message+'</div>';
+      return;
+    }
+    matchId = match.id;
   }
 
   const playerRows = [];
   [playerA1, playerA2].filter(Boolean).forEach(pid=>{
     const p = players.find(pl=>pl.id===pid);
-    if(p) playerRows.push({ match_id: match.id, player_id: p.id, player_name: p.name, side: 'A' });
+    if(p) playerRows.push({ match_id: matchId, player_id: p.id, player_name: p.name, side: 'A' });
   });
   [playerB1, playerB2].filter(Boolean).forEach(pid=>{
     const p = players.find(pl=>pl.id===pid);
-    if(p) playerRows.push({ match_id: match.id, player_id: p.id, player_name: p.name, side: 'B' });
+    if(p) playerRows.push({ match_id: matchId, player_id: p.id, player_name: p.name, side: 'B' });
   });
   if(playerRows.length){
     await db.from('match_players').insert(playerRows);
   }
 
-  msg.innerHTML = '<div class="msg ok">Match added to schedule!</div>';
+  msg.innerHTML = editingMatchId
+    ? '<div class="msg ok">Match updated!</div>'
+    : '<div class="msg ok">Match added to schedule!</div>';
+
+  cancelEdit();
   loadScheduleList();
+}
+
+async function editMatch(matchId){
+  if(!db) return;
+
+  const { data: m, error } = await db
+    .from('matches')
+    .select('*, match_players(player_id, side)')
+    .eq('id', matchId)
+    .single();
+
+  if(error || !m){ return; }
+
+  editingMatchId = matchId;
+
+  document.getElementById('schedule-form-title').textContent = 'Edit Match';
+  document.getElementById('schedule-submit-btn').textContent = 'Save Changes';
+  document.getElementById('schedule-cancel-btn').classList.remove('hidden');
+
+  document.getElementById('sc-category').value = m.category_id;
+  document.getElementById('sc-round').value = m.round;
+  document.getElementById('sc-court').value = m.court_number;
+  document.getElementById('sc-teamA').value = m.team_a_id;
+  document.getElementById('sc-teamB').value = m.team_b_id;
+
+  populateTeamPlayers('A');
+  populateTeamPlayers('B');
+
+  const sideA = m.match_players.filter(mp=>mp.side==='A').map(mp=>mp.player_id);
+  const sideB = m.match_players.filter(mp=>mp.side==='B').map(mp=>mp.player_id);
+
+  document.getElementById('sc-playerA1').value = sideA[0] || '';
+  document.getElementById('sc-playerA2').value = sideA[1] || '';
+  document.getElementById('sc-playerB1').value = sideB[0] || '';
+  document.getElementById('sc-playerB2').value = sideB[1] || '';
+
+  document.getElementById('tab-schedule').scrollIntoView({ behavior:'smooth' });
+}
+
+function cancelEdit(){
+  editingMatchId = null;
+  document.getElementById('schedule-form-title').textContent = 'Schedule a Match';
+  document.getElementById('schedule-submit-btn').textContent = 'Add to Schedule';
+  document.getElementById('schedule-cancel-btn').classList.add('hidden');
+  document.getElementById('sc-playerA1').value = '';
+  document.getElementById('sc-playerA2').value = '';
+  document.getElementById('sc-playerB1').value = '';
+  document.getElementById('sc-playerB2').value = '';
+  document.getElementById('schedule-create-msg').innerHTML = '';
 }
 
 async function loadScheduleList(){
@@ -726,6 +805,7 @@ async function loadScheduleList(){
     } else if(m.status === 'in_progress'){
       actionBtn = `<button class="small" onclick="sendPrompt('Enter the score for ${m.teamA.name} vs ${m.teamB.name}')">Go to Score Entry →</button>`;
     }
+    actionBtn += ` <button class="small ghost" onclick="editMatch('${m.id}')">Edit</button>`;
 
     return `<div class="schedule-card">
       <div class="top-row">
