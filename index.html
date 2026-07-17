@@ -340,7 +340,7 @@
 </main>
 
 <script>
-let supabase = null;
+let db = null;
 let categories = [];
 let teams = [];
 
@@ -378,15 +378,15 @@ async function connectSupabase(){
   msg.innerHTML = '<div class="msg ok">Connecting...</div>';
 
   try{
-    supabase = window.supabase.createClient(url, key);
+    db = window.supabase.createClient(url, key);
 
     // Actually test the connection with a real query before declaring success
-    const { error } = await supabase.from('teams').select('id').limit(1);
+    const { error } = await db.from('teams').select('id').limit(1);
 
     if(error){
       msg.innerHTML = '<div class="msg err">Connected to Supabase, but the query failed: '+error.message+'<br><br>This usually means the SQL schema hasn\'t been run yet, or the URL/key is wrong.</div>';
       console.error('Supabase test query error:', error);
-      supabase = null;
+      db = null;
       return;
     }
 
@@ -417,8 +417,8 @@ async function initApp(){
 }
 
 async function loadTeamsAndCategories(){
-  const { data: teamData, error: teamErr } = await supabase.from('teams').select('*').order('name');
-  const { data: catData, error: catErr } = await supabase.from('categories').select('*').order('name');
+  const { data: teamData, error: teamErr } = await db.from('teams').select('*').order('name');
+  const { data: catData, error: catErr } = await db.from('categories').select('*').order('name');
   if(teamErr || catErr){
     document.getElementById('setup-msg').innerHTML = '<div class="msg err">Error loading data. Check your credentials and RLS policies.</div>';
     return;
@@ -442,7 +442,7 @@ async function loadTeamsAndCategories(){
 // ---------- MATCH CREATION ----------
 async function createMatch(){
   const msg = document.getElementById('players-msg');
-  if(!supabase){ msg.innerHTML = '<div class="msg err">Connect Supabase first (Setup tab).</div>'; return; }
+  if(!db){ msg.innerHTML = '<div class="msg err">Connect Supabase first (Setup tab).</div>'; return; }
 
   const categoryId = document.getElementById('p-category').value;
   const court = document.getElementById('p-court').value;
@@ -457,7 +457,7 @@ async function createMatch(){
     return;
   }
 
-  const { data: match, error } = await supabase.from('matches').insert({
+  const { data: match, error } = await db.from('matches').insert({
     category_id: categoryId,
     court_number: court,
     team_a_id: teamA,
@@ -479,7 +479,7 @@ async function createMatch(){
     playerRows.push({ match_id: match.id, player_name: name, side: 'B' });
   });
   if(playerRows.length){
-    await supabase.from('match_players').insert(playerRows);
+    await db.from('match_players').insert(playerRows);
   }
 
   msg.innerHTML = '<div class="msg ok">Match created!</div>';
@@ -490,9 +490,9 @@ async function createMatch(){
 
 async function loadMatchList(){
   const container = document.getElementById('match-list');
-  if(!supabase){ container.innerHTML = 'Connect Supabase first.'; return; }
+  if(!db){ container.innerHTML = 'Connect Supabase first.'; return; }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('matches')
     .select('*, categories(name), teamA:team_a_id(name), teamB:team_b_id(name)')
     .order('created_at', { ascending: false })
@@ -515,9 +515,9 @@ async function loadMatchList(){
 // ---------- SCORE ENTRY ----------
 async function loadMatchesForScoring(){
   const select = document.getElementById('s-match');
-  if(!supabase){ select.innerHTML = '<option>Connect Supabase first</option>'; return; }
+  if(!db){ select.innerHTML = '<option>Connect Supabase first</option>'; return; }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('matches')
     .select('*, categories(name), teamA:team_a_id(name), teamB:team_b_id(name)')
     .eq('status', 'scheduled')
@@ -567,7 +567,7 @@ async function submitScore(){
     return;
   }
 
-  const { error } = await supabase.from('matches').update({
+  const { error } = await db.from('matches').update({
     team_a_score: scoreA,
     team_b_score: scoreB,
     winner_team_id: winner,
@@ -586,9 +586,9 @@ async function submitScore(){
 // ---------- LEADERBOARD ----------
 async function loadLeaderboard(){
   const body = document.getElementById('leaderboard-body');
-  if(!supabase){ body.innerHTML = ''; return; }
+  if(!db){ body.innerHTML = ''; return; }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('team_leaderboard')
     .select('*')
     .order('wins', { ascending: false });
@@ -605,7 +605,7 @@ async function loadLeaderboard(){
   `).join('');
 
   // category breakdown (completed matches grouped by category, showing excluded flag)
-  const { data: matchData } = await supabase
+  const { data: matchData } = await db
     .from('matches')
     .select('*, categories(name, counts_toward_team_total), teamA:team_a_id(name), teamB:team_b_id(name), winner:winner_team_id(name)')
     .eq('status', 'completed')
@@ -635,12 +635,12 @@ async function loadBracket(){
   document.getElementById('b-category').onchange = loadBracket;
 
   const view = document.getElementById('bracket-view');
-  if(!supabase){ view.innerHTML = 'Connect Supabase first.'; return; }
+  if(!db){ view.innerHTML = 'Connect Supabase first.'; return; }
 
   const cat = categories.find(c=>c.name === catName);
   if(!cat){ view.innerHTML = 'Category not loaded yet.'; return; }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('matches')
     .select('*, teamA:team_a_id(name), teamB:team_b_id(name), winner:winner_team_id(name)')
     .eq('category_id', cat.id)
