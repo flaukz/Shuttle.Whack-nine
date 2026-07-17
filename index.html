@@ -359,22 +359,44 @@ document.querySelectorAll('nav button').forEach(btn=>{
 });
 
 // ---------- SETUP ----------
-function connectSupabase(){
+async function connectSupabase(){
   const url = document.getElementById('sb-url').value.trim();
   const key = document.getElementById('sb-key').value.trim();
   const msg = document.getElementById('setup-msg');
+
   if(!url || !key){
     msg.innerHTML = '<div class="msg err">Please enter both URL and key.</div>';
     return;
   }
+
+  if(typeof window.supabase === 'undefined' || typeof window.supabase.createClient !== 'function'){
+    msg.innerHTML = '<div class="msg err">The Supabase library did not load. Check your internet connection and reload the page, then try again.</div>';
+    console.error('window.supabase is not available — CDN script may have failed to load.');
+    return;
+  }
+
+  msg.innerHTML = '<div class="msg ok">Connecting...</div>';
+
   try{
     supabase = window.supabase.createClient(url, key);
+
+    // Actually test the connection with a real query before declaring success
+    const { error } = await supabase.from('teams').select('id').limit(1);
+
+    if(error){
+      msg.innerHTML = '<div class="msg err">Connected to Supabase, but the query failed: '+error.message+'<br><br>This usually means the SQL schema hasn\'t been run yet, or the URL/key is wrong.</div>';
+      console.error('Supabase test query error:', error);
+      supabase = null;
+      return;
+    }
+
     localStorage.setItem('sb-url', url);
     localStorage.setItem('sb-key', key);
     msg.innerHTML = '<div class="msg ok">Connected! Loading data...</div>';
     initApp();
   }catch(e){
     msg.innerHTML = '<div class="msg err">Connection failed: '+e.message+'</div>';
+    console.error('Connect error:', e);
   }
 }
 
@@ -385,8 +407,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   if(url && key){
     document.getElementById('sb-url').value = url;
     document.getElementById('sb-key').value = key;
-    supabase = window.supabase.createClient(url, key);
-    initApp();
+    connectSupabase();
   }
 });
 
