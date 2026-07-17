@@ -787,11 +787,6 @@ async function createMatch(){
   const playerB1 = document.getElementById('sc-playerB1').value;
   const playerB2 = document.getElementById('sc-playerB2').value;
 
-  if(teamA === teamB){
-    msg.innerHTML = '<div class="msg err">Team A and Team B must be different.</div>';
-    return;
-  }
-
   let matchId;
 
   if(editingMatchId){
