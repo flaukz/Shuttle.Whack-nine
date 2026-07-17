@@ -456,6 +456,7 @@ let categories = [];
 let teams = [];
 let players = [];
 let editingMatchId = null;
+let editingPlayerId = null;
 
 // ---------- TAB NAVIGATION ----------
 document.querySelectorAll('nav button').forEach(btn=>{
@@ -570,10 +571,96 @@ function refreshRosterLists(){
     ? categories.map(c=>`<div class="list-item">${c.name} ${c.counts_toward_team_total ? '' : '<span class="badge excluded">bracket only</span>'}</div>`).join('')
     : '<p class="hint">No categories yet.</p>';
 
-  // Player list display
-  document.getElementById('player-list').innerHTML = players.length
-    ? players.map(p=>`<div class="list-item">${p.name} <span style="color:var(--gray);font-size:0.8rem;">${p.teams ? p.teams.name : 'No team'}</span></div>`).join('')
-    : '<p class="hint">No players yet.</p>';
+  renderPlayerList();
+}
+
+function renderPlayerList(){
+  const container = document.getElementById('player-list');
+  if(!players.length){
+    container.innerHTML = '<p class="hint">No players yet.</p>';
+    return;
+  }
+
+  // teams array is already loaded alphabetically (query used .order('name'))
+  const groups = teams.map(t => ({
+    team: t,
+    members: players.filter(p => p.team_id === t.id).sort((a,b)=>a.name.localeCompare(b.name))
+  }));
+  const unassigned = players.filter(p => !p.team_id).sort((a,b)=>a.name.localeCompare(b.name));
+  if(unassigned.length) groups.push({ team: { id:null, name:'Unassigned' }, members: unassigned });
+
+  container.innerHTML = groups.filter(g=>g.members.length).map(g => `
+    <div style="margin-bottom:10px;">
+      <div style="font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--court-green); margin:10px 0 4px;">${g.team.name}</div>
+      ${g.members.map(p => renderPlayerRow(p)).join('')}
+    </div>
+  `).join('');
+}
+
+function renderPlayerRow(p){
+  if(editingPlayerId === p.id){
+    const teamOptions = teams.map(t=>`<option value="${t.id}" ${t.id===p.team_id?'selected':''}>${t.name}</option>`).join('');
+    return `<div class="list-item" style="display:block; background:#f7faf8; border-radius:6px; padding:10px;">
+      <input id="edit-player-name-${p.id}" value="${p.name.replace(/"/g,'&quot;')}" style="margin-bottom:8px;">
+      <select id="edit-player-team-${p.id}" style="margin-bottom:8px;">${teamOptions}</select>
+      <div style="display:flex; gap:8px;">
+        <button class="small" onclick="savePlayerEdit('${p.id}')">Save</button>
+        <button class="small ghost" onclick="cancelPlayerEdit()">Cancel</button>
+      </div>
+    </div>`;
+  }
+  return `<div class="list-item">
+    <span>${p.name}</span>
+    <span>
+      <button class="small ghost" onclick="startEditPlayer('${p.id}')">Edit</button>
+      <button class="small ghost" style="border-color:var(--danger); color:var(--danger);" onclick="deletePlayer('${p.id}')">Delete</button>
+    </span>
+  </div>`;
+}
+
+function startEditPlayer(playerId){
+  editingPlayerId = playerId;
+  renderPlayerList();
+}
+
+function cancelPlayerEdit(){
+  editingPlayerId = null;
+  renderPlayerList();
+}
+
+async function savePlayerEdit(playerId){
+  if(!db) return;
+  const newName = document.getElementById('edit-player-name-'+playerId).value.trim();
+  const newTeamId = document.getElementById('edit-player-team-'+playerId).value;
+
+  if(!newName){ alert('Player name cannot be empty.'); return; }
+
+  const { error } = await db.from('players').update({ name: newName, team_id: newTeamId }).eq('id', playerId);
+  if(error){ alert('Error saving player: ' + error.message); return; }
+
+  editingPlayerId = null;
+  await loadPlayers();
+  renderPlayerList();
+}
+
+async function deletePlayer(playerId){
+  if(!db) return;
+  const player = players.find(p=>p.id===playerId);
+  const confirmed = confirm(`Delete ${player ? player.name : 'this player'}? This cannot be undone.`);
+  if(!confirmed) return;
+
+  const { error } = await db.from('players').delete().eq('id', playerId);
+  if(error){
+    if(error.message && error.message.toLowerCase().includes('foreign key')){
+      alert('This player is assigned to one or more scheduled matches, so they can\'t be deleted yet. Edit or cancel those matches first, or remove the player from them.');
+    } else {
+      alert('Error deleting player: ' + error.message);
+    }
+    return;
+  }
+
+  await loadPlayers();
+  renderPlayerList();
 }
 
 async function addCategory(){
