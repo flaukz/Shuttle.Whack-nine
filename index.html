@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shuttle League — Tournament Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --court-green:#1f6b4f;
+    --court-green-dark:#144a36;
+    --line-white:#f4f7f5;
+    --shuttle-yellow:#e8c547;
+    --ink:#0f2a20;
+    --gray:#6b7d75;
+    --card:#ffffff;
+    --danger:#c1442e;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:'Segoe UI', Roboto, -apple-system, sans-serif;
+    background:var(--line-white);
+    color:var(--ink);
+  }
+  header{
+    background:linear-gradient(135deg,var(--court-green),var(--court-green-dark));
+    color:#fff;
+    padding:22px 20px;
+    position:relative;
+    overflow:hidden;
+  }
+  header::after{
+    content:"";
+    position:absolute;
+    right:-40px; top:-40px;
+    width:160px; height:160px;
+    border:3px solid rgba(255,255,255,0.15);
+    border-radius:50%;
+  }
+  header h1{
+    margin:0;
+    font-size:1.5rem;
+    letter-spacing:0.5px;
+  }
+  header .sub{
+    font-size:0.85rem;
+    opacity:0.85;
+    margin-top:4px;
+  }
+  nav{
+    display:flex;
+    overflow-x:auto;
+    background:var(--court-green-dark);
+    position:sticky;
+    top:0;
+    z-index:10;
+  }
+  nav button{
+    flex:1;
+    min-width:110px;
+    background:none;
+    border:none;
+    color:rgba(255,255,255,0.7);
+    padding:14px 8px;
+    font-size:0.85rem;
+    font-weight:600;
+    cursor:pointer;
+    border-bottom:3px solid transparent;
+    white-space:nowrap;
+  }
+  nav button.active{
+    color:#fff;
+    border-bottom:3px solid var(--shuttle-yellow);
+  }
+  main{
+    max-width:900px;
+    margin:0 auto;
+    padding:16px;
+  }
+  .tab{display:none;}
+  .tab.active{display:block;}
+  .card{
+    background:var(--card);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:14px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.08);
+    border-left:4px solid var(--court-green);
+  }
+  .card h3{margin-top:0; font-size:1rem;}
+  label{
+    display:block;
+    font-size:0.78rem;
+    font-weight:600;
+    color:var(--gray);
+    margin:10px 0 4px;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+  }
+  select, input{
+    width:100%;
+    padding:9px 10px;
+    border:1px solid #d7ded9;
+    border-radius:6px;
+    font-size:0.95rem;
+    background:#fff;
+  }
+  .row{display:flex; gap:10px;}
+  .row > *{flex:1;}
+  button.primary{
+    background:var(--court-green);
+    color:#fff;
+    border:none;
+    padding:11px 16px;
+    border-radius:6px;
+    font-weight:600;
+    font-size:0.9rem;
+    cursor:pointer;
+    margin-top:14px;
+    width:100%;
+  }
+  button.primary:active{background:var(--court-green-dark);}
+  button.ghost{
+    background:none;
+    border:1px solid var(--court-green);
+    color:var(--court-green);
+    padding:6px 10px;
+    border-radius:6px;
+    font-size:0.8rem;
+    cursor:pointer;
+  }
+  .badge{
+    display:inline-block;
+    font-size:0.7rem;
+    font-weight:700;
+    padding:2px 8px;
+    border-radius:20px;
+    background:var(--shuttle-yellow);
+    color:var(--ink);
+    margin-left:6px;
+  }
+  .badge.excluded{background:#e5e5e5; color:var(--gray);}
+  .match-item{
+    border-bottom:1px solid #eee;
+    padding:10px 0;
+    font-size:0.9rem;
+  }
+  .match-item:last-child{border-bottom:none;}
+  .winner{font-weight:700; color:var(--court-green);}
+  table{width:100%; border-collapse:collapse; font-size:0.9rem;}
+  th, td{padding:8px 6px; text-align:left; border-bottom:1px solid #eee;}
+  th{color:var(--gray); font-size:0.75rem; text-transform:uppercase;}
+  .rank{
+    font-weight:800;
+    font-size:1.1rem;
+    color:var(--court-green);
+    width:26px;
+  }
+  .bracket-round{margin-bottom:20px;}
+  .bracket-round h4{
+    color:var(--gray);
+    font-size:0.8rem;
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    margin-bottom:8px;
+  }
+  .bracket-match{
+    background:#f7faf8;
+    border:1px solid #e2e8e4;
+    border-radius:8px;
+    padding:10px 12px;
+    margin-bottom:8px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:0.88rem;
+  }
+  .msg{
+    font-size:0.85rem;
+    padding:10px;
+    border-radius:6px;
+    margin-top:10px;
+  }
+  .msg.ok{background:#e6f4ea; color:var(--court-green-dark);}
+  .msg.err{background:#fbe9e7; color:var(--danger);}
+  .setup-box textarea, .setup-box input{font-family:monospace; font-size:0.8rem;}
+  .hidden{display:none;}
+  .court-tag{
+    font-size:0.7rem;
+    background:var(--court-green);
+    color:#fff;
+    padding:2px 6px;
+    border-radius:4px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏸 Shuttle League Tracker</h1>
+  <div class="sub">Whack/Shuttle Up · SNAB · Sunday Shuttlers · Falcon</div>
+</header>
+
+<nav>
+  <button class="active" data-tab="setup">Setup</button>
+  <button data-tab="players">Players</button>
+  <button data-tab="score">Score Entry</button>
+  <button data-tab="leaderboard">Leaderboard</button>
+  <button data-tab="bracket">Bracket</button>
+</nav>
+
+<main>
+
+  <!-- SETUP TAB -->
+  <div class="tab active" id="tab-setup">
+    <div class="card setup-box">
+      <h3>Connect to Supabase</h3>
+      <p style="font-size:0.85rem;color:var(--gray)">Paste your project URL and anon key (from Supabase → Settings → API). This is stored only in your browser.</p>
+      <label>Supabase URL</label>
+      <input id="sb-url" placeholder="https://xxxx.supabase.co">
+      <label>Anon Public Key</label>
+      <input id="sb-key" placeholder="eyJhbGciOi...">
+      <button class="primary" onclick="connectSupabase()">Connect</button>
+      <div id="setup-msg"></div>
+    </div>
+  </div>
+
+  <!-- PLAYER / MATCH ENCODING TAB -->
+  <div class="tab" id="tab-players">
+    <div class="card">
+      <h3>Create Match</h3>
+      <label>Category</label>
+      <select id="p-category"></select>
+
+      <label>Court</label>
+      <select id="p-court">
+        <option value="1">Court 1</option>
+        <option value="2">Court 2</option>
+        <option value="3">Court 3</option>
+        <option value="4">Court 4</option>
+        <option value="5">Court 5</option>
+      </select>
+
+      <div class="row">
+        <div>
+          <label>Team A</label>
+          <select id="p-teamA"></select>
+        </div>
+        <div>
+          <label>Team B</label>
+          <select id="p-teamB"></select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Team A Player(s)</label>
+          <input id="p-playersA" placeholder="e.g. Juan, Mark">
+        </div>
+        <div>
+          <label>Team B Player(s)</label>
+          <input id="p-playersB" placeholder="e.g. Ana, Liza">
+        </div>
+      </div>
+
+      <label>Bracket Round (only for 2 MD E / 2 WD E / 2 MXD E)</label>
+      <select id="p-round">
+        <option value="round_robin">Round Robin (default)</option>
+        <option value="semifinal">Semifinal</option>
+        <option value="final">Final</option>
+      </select>
+
+      <button class="primary" onclick="createMatch()">Create Match</button>
+      <div id="players-msg"></div>
+    </div>
+
+    <div class="card">
+      <h3>Scheduled / Recent Matches</h3>
+      <div id="match-list">Connect Supabase first.</div>
+    </div>
+  </div>
+
+  <!-- SCORE ENTRY TAB -->
+  <div class="tab" id="tab-score">
+    <div class="card">
+      <h3>Enter Score</h3>
+      <label>Select Match</label>
+      <select id="s-match"></select>
+
+      <div class="row">
+        <div>
+          <label id="s-teamA-label">Team A Score</label>
+          <input type="number" id="s-scoreA" min="0">
+        </div>
+        <div>
+          <label id="s-teamB-label">Team B Score</label>
+          <input type="number" id="s-scoreB" min="0">
+        </div>
+      </div>
+
+      <label>Winner</label>
+      <select id="s-winner"></select>
+
+      <button class="primary" onclick="submitScore()">Save Score</button>
+      <div id="score-msg"></div>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD TAB -->
+  <div class="tab" id="tab-leaderboard">
+    <div class="card">
+      <h3>Team Standings <span class="badge excluded">Excludes 2 MD E / 2 WD E / 2 MXD E</span></h3>
+      <table>
+        <thead><tr><th>#</th><th>Team</th><th>Wins</th><th>Games Played</th></tr></thead>
+        <tbody id="leaderboard-body"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>All Completed Matches (by category)</h3>
+      <div id="category-breakdown"></div>
+    </div>
+  </div>
+
+  <!-- BRACKET TAB -->
+  <div class="tab" id="tab-bracket">
+    <div class="card">
+      <h3>Elimination Bracket</h3>
+      <label>Category</label>
+      <select id="b-category">
+        <option value="2 MD E">2 MD E</option>
+        <option value="2 WD E">2 WD E</option>
+        <option value="2 MXD E">2 MXD E</option>
+      </select>
+      <div id="bracket-view" style="margin-top:16px;"></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+let supabase = null;
+let categories = [];
+let teams = [];
+
+// ---------- TAB NAVIGATION ----------
+document.querySelectorAll('nav button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+    if(btn.dataset.tab === 'leaderboard') loadLeaderboard();
+    if(btn.dataset.tab === 'bracket') loadBracket();
+    if(btn.dataset.tab === 'score') loadMatchesForScoring();
+    if(btn.dataset.tab === 'players') loadMatchList();
+  });
+});
+
+// ---------- SETUP ----------
+function connectSupabase(){
+  const url = document.getElementById('sb-url').value.trim();
+  const key = document.getElementById('sb-key').value.trim();
+  const msg = document.getElementById('setup-msg');
+  if(!url || !key){
+    msg.innerHTML = '<div class="msg err">Please enter both URL and key.</div>';
+    return;
+  }
+  try{
+    supabase = window.supabase.createClient(url, key);
+    localStorage.setItem('sb-url', url);
+    localStorage.setItem('sb-key', key);
+    msg.innerHTML = '<div class="msg ok">Connected! Loading data...</div>';
+    initApp();
+  }catch(e){
+    msg.innerHTML = '<div class="msg err">Connection failed: '+e.message+'</div>';
+  }
+}
+
+// auto-reconnect from saved credentials
+window.addEventListener('DOMContentLoaded', ()=>{
+  const url = localStorage.getItem('sb-url');
+  const key = localStorage.getItem('sb-key');
+  if(url && key){
+    document.getElementById('sb-url').value = url;
+    document.getElementById('sb-key').value = key;
+    supabase = window.supabase.createClient(url, key);
+    initApp();
+  }
+});
+
+async function initApp(){
+  await loadTeamsAndCategories();
+  await loadMatchList();
+}
+
+async function loadTeamsAndCategories(){
+  const { data: teamData, error: teamErr } = await supabase.from('teams').select('*').order('name');
+  const { data: catData, error: catErr } = await supabase.from('categories').select('*').order('name');
+  if(teamErr || catErr){
+    document.getElementById('setup-msg').innerHTML = '<div class="msg err">Error loading data. Check your credentials and RLS policies.</div>';
+    return;
+  }
+  teams = teamData;
+  categories = catData;
+
+  const teamOptsA = document.getElementById('p-teamA');
+  const teamOptsB = document.getElementById('p-teamB');
+  teamOptsA.innerHTML = teamOptsB.innerHTML = teams.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+
+  const catSelect = document.getElementById('p-category');
+  catSelect.innerHTML = categories.map(c=>{
+    const tag = c.counts_toward_team_total ? '' : ' (bracket only)';
+    return `<option value="${c.id}">${c.name}${tag}</option>`;
+  }).join('');
+
+  document.getElementById('setup-msg').innerHTML = '<div class="msg ok">Connected and ready.</div>';
+}
+
+// ---------- MATCH CREATION ----------
+async function createMatch(){
+  const msg = document.getElementById('players-msg');
+  if(!supabase){ msg.innerHTML = '<div class="msg err">Connect Supabase first (Setup tab).</div>'; return; }
+
+  const categoryId = document.getElementById('p-category').value;
+  const court = document.getElementById('p-court').value;
+  const teamA = document.getElementById('p-teamA').value;
+  const teamB = document.getElementById('p-teamB').value;
+  const playersA = document.getElementById('p-playersA').value.trim();
+  const playersB = document.getElementById('p-playersB').value.trim();
+  const round = document.getElementById('p-round').value;
+
+  if(teamA === teamB){
+    msg.innerHTML = '<div class="msg err">Team A and Team B must be different.</div>';
+    return;
+  }
+
+  const { data: match, error } = await supabase.from('matches').insert({
+    category_id: categoryId,
+    court_number: court,
+    team_a_id: teamA,
+    team_b_id: teamB,
+    round: round,
+    status: 'scheduled'
+  }).select().single();
+
+  if(error){
+    msg.innerHTML = '<div class="msg err">Error: '+error.message+'</div>';
+    return;
+  }
+
+  const playerRows = [];
+  playersA.split(',').map(n=>n.trim()).filter(Boolean).forEach(name=>{
+    playerRows.push({ match_id: match.id, player_name: name, side: 'A' });
+  });
+  playersB.split(',').map(n=>n.trim()).filter(Boolean).forEach(name=>{
+    playerRows.push({ match_id: match.id, player_name: name, side: 'B' });
+  });
+  if(playerRows.length){
+    await supabase.from('match_players').insert(playerRows);
+  }
+
+  msg.innerHTML = '<div class="msg ok">Match created!</div>';
+  document.getElementById('p-playersA').value = '';
+  document.getElementById('p-playersB').value = '';
+  loadMatchList();
+}
+
+async function loadMatchList(){
+  const container = document.getElementById('match-list');
+  if(!supabase){ container.innerHTML = 'Connect Supabase first.'; return; }
+
+  const { data, error } = await supabase
+    .from('matches')
+    .select('*, categories(name), teamA:team_a_id(name), teamB:team_b_id(name)')
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if(error){ container.innerHTML = 'Error loading matches: '+error.message; return; }
+  if(!data.length){ container.innerHTML = 'No matches yet.'; return; }
+
+  container.innerHTML = data.map(m=>{
+    const statusLabel = m.status === 'completed'
+      ? `<span class="winner">${m.team_a_score}-${m.team_b_score}</span>`
+      : `<em style="color:var(--gray)">${m.status}</em>`;
+    return `<div class="match-item">
+      <strong>${m.categories.name}</strong> · <span class="court-tag">Court ${m.court_number}</span> · ${m.round !== 'round_robin' ? m.round.toUpperCase() : ''}<br>
+      ${m.teamA.name} vs ${m.teamB.name} — ${statusLabel}
+    </div>`;
+  }).join('');
+}
+
+// ---------- SCORE ENTRY ----------
+async function loadMatchesForScoring(){
+  const select = document.getElementById('s-match');
+  if(!supabase){ select.innerHTML = '<option>Connect Supabase first</option>'; return; }
+
+  const { data, error } = await supabase
+    .from('matches')
+    .select('*, categories(name), teamA:team_a_id(name), teamB:team_b_id(name)')
+    .eq('status', 'scheduled')
+    .order('created_at', { ascending: false });
+
+  if(error || !data.length){
+    select.innerHTML = '<option value="">No pending matches</option>';
+    return;
+  }
+
+  select.innerHTML = data.map(m=>
+    `<option value="${m.id}" data-teama="${m.team_a_id}" data-teamb="${m.team_b_id}" data-teamaname="${m.teamA.name}" data-teambname="${m.teamB.name}">
+      ${m.categories.name}: ${m.teamA.name} vs ${m.teamB.name} (Court ${m.court_number})
+    </option>`
+  ).join('');
+
+  updateScoreLabels();
+  select.onchange = updateScoreLabels;
+}
+
+function updateScoreLabels(){
+  const select = document.getElementById('s-match');
+  const opt = select.options[select.selectedIndex];
+  if(!opt || !opt.dataset.teama) return;
+
+  document.getElementById('s-teamA-label').textContent = opt.dataset.teamaname + ' Score';
+  document.getElementById('s-teamB-label').textContent = opt.dataset.teambname + ' Score';
+
+  const winnerSelect = document.getElementById('s-winner');
+  winnerSelect.innerHTML = `
+    <option value="${opt.dataset.teama}">${opt.dataset.teamaname}</option>
+    <option value="${opt.dataset.teamb}">${opt.dataset.teambname}</option>
+  `;
+}
+
+async function submitScore(){
+  const msg = document.getElementById('score-msg');
+  const matchId = document.getElementById('s-match').value;
+  if(!matchId){ msg.innerHTML = '<div class="msg err">No match selected.</div>'; return; }
+
+  const scoreA = parseInt(document.getElementById('s-scoreA').value);
+  const scoreB = parseInt(document.getElementById('s-scoreB').value);
+  const winner = document.getElementById('s-winner').value;
+
+  if(isNaN(scoreA) || isNaN(scoreB)){
+    msg.innerHTML = '<div class="msg err">Enter both scores.</div>';
+    return;
+  }
+
+  const { error } = await supabase.from('matches').update({
+    team_a_score: scoreA,
+    team_b_score: scoreB,
+    winner_team_id: winner,
+    status: 'completed'
+  }).eq('id', matchId);
+
+  if(error){
+    msg.innerHTML = '<div class="msg err">Error: '+error.message+'</div>';
+    return;
+  }
+
+  msg.innerHTML = '<div class="msg ok">Score saved!</div>';
+  loadMatchesForScoring();
+}
+
+// ---------- LEADERBOARD ----------
+async function loadLeaderboard(){
+  const body = document.getElementById('leaderboard-body');
+  if(!supabase){ body.innerHTML = ''; return; }
+
+  const { data, error } = await supabase
+    .from('team_leaderboard')
+    .select('*')
+    .order('wins', { ascending: false });
+
+  if(error){ body.innerHTML = `<tr><td colspan="4">Error: ${error.message}</td></tr>`; return; }
+
+  body.innerHTML = data.map((row, i)=>`
+    <tr>
+      <td class="rank">${i+1}</td>
+      <td>${row.team_name}</td>
+      <td><strong>${row.wins}</strong></td>
+      <td>${row.games_played}</td>
+    </tr>
+  `).join('');
+
+  // category breakdown (completed matches grouped by category, showing excluded flag)
+  const { data: matchData } = await supabase
+    .from('matches')
+    .select('*, categories(name, counts_toward_team_total), teamA:team_a_id(name), teamB:team_b_id(name), winner:winner_team_id(name)')
+    .eq('status', 'completed')
+    .order('created_at', { ascending: false });
+
+  const breakdown = document.getElementById('category-breakdown');
+  if(!matchData || !matchData.length){
+    breakdown.innerHTML = 'No completed matches yet.';
+    return;
+  }
+
+  breakdown.innerHTML = matchData.map(m=>{
+    const badge = m.categories.counts_toward_team_total
+      ? ''
+      : '<span class="badge excluded">excluded from total</span>';
+    return `<div class="match-item">
+      <strong>${m.categories.name}</strong> ${badge}<br>
+      ${m.teamA.name} ${m.team_a_score} - ${m.team_b_score} ${m.teamB.name}
+      → <span class="winner">${m.winner ? m.winner.name : '—'} won</span>
+    </div>`;
+  }).join('');
+}
+
+// ---------- BRACKET ----------
+async function loadBracket(){
+  const catName = document.getElementById('b-category').value;
+  document.getElementById('b-category').onchange = loadBracket;
+
+  const view = document.getElementById('bracket-view');
+  if(!supabase){ view.innerHTML = 'Connect Supabase first.'; return; }
+
+  const cat = categories.find(c=>c.name === catName);
+  if(!cat){ view.innerHTML = 'Category not loaded yet.'; return; }
+
+  const { data, error } = await supabase
+    .from('matches')
+    .select('*, teamA:team_a_id(name), teamB:team_b_id(name), winner:winner_team_id(name)')
+    .eq('category_id', cat.id)
+    .in('round', ['semifinal','final'])
+    .order('round');
+
+  if(error){ view.innerHTML = 'Error: '+error.message; return; }
+
+  const semis = data.filter(m=>m.round==='semifinal');
+  const finals = data.filter(m=>m.round==='final');
+
+  function renderMatch(m){
+    const scoreLine = m.status === 'completed'
+      ? `${m.team_a_score} - ${m.team_b_score}`
+      : 'Not played';
+    const winnerName = m.winner ? m.winner.name : null;
+    return `<div class="bracket-match">
+      <span>${m.teamA.name} vs ${m.teamB.name}</span>
+      <span>${scoreLine} ${winnerName ? `<strong>(${winnerName})</strong>` : ''}</span>
+    </div>`;
+  }
+
+  let html = '';
+  html += `<div class="bracket-round"><h4>Semifinal</h4>`;
+  html += semis.length ? semis.map(renderMatch).join('') : '<p style="color:var(--gray);font-size:0.85rem;">No semifinal matches created yet. Add one in the Players tab with round = Semifinal.</p>';
+  html += `</div>`;
+
+  html += `<div class="bracket-round"><h4>Final</h4>`;
+  html += finals.length ? finals.map(renderMatch).join('') : '<p style="color:var(--gray);font-size:0.85rem;">No final match created yet.</p>';
+  html += `</div>`;
+
+  view.innerHTML = html;
+}
+</script>
+</body>
+</html>
