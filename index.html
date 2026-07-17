@@ -890,7 +890,7 @@ async function loadScheduleList(){
     if(m.status === 'scheduled'){
       actionBtn = `<button class="small ghost" onclick="startMatch('${m.id}')">Start Match</button>`;
     } else if(m.status === 'in_progress'){
-      actionBtn = `<button class="small" onclick="sendPrompt('Enter the score for ${m.teamA.name} vs ${m.teamB.name}')">Go to Score Entry →</button>`;
+      actionBtn = `<button class="small" onclick="goToScoreEntry('${m.id}')">Go to Score Entry →</button>`;
     }
     actionBtn += ` <button class="small ghost" onclick="editMatch('${m.id}')">Edit</button>`;
     actionBtn += ` <button class="small ghost" style="border-color:var(--danger); color:var(--danger);" onclick="cancelMatch('${m.id}')">Cancel Match</button>`;
@@ -941,6 +941,20 @@ async function cancelMatch(matchId){
 }
 
 // ---------- SCORE ENTRY ----------
+async function goToScoreEntry(matchId){
+  // Switch to the Score Entry tab
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelector('nav button[data-tab="score"]').classList.add('active');
+  document.getElementById('tab-score').classList.add('active');
+
+  await loadMatchesForScoring();
+
+  const select = document.getElementById('s-match');
+  select.value = matchId;
+  updateScoreLabels();
+}
+
 async function loadMatchesForScoring(){
   const select = document.getElementById('s-match');
   if(!db){ select.innerHTML = '<option>Connect Supabase first</option>'; return; }
