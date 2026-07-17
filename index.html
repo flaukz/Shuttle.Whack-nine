@@ -422,8 +422,16 @@
     <div class="card">
       <h3>Team Standings <span class="badge excluded">Excludes bracket-only categories</span></h3>
       <table>
-        <thead><tr><th>#</th><th>Team</th><th>Wins</th><th>Games Played</th></tr></thead>
+        <thead><tr><th>#</th><th>Team</th><th>Wins</th><th>Games Played</th><th>Score</th></tr></thead>
         <tbody id="leaderboard-body"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>E-Level Team Standings <span class="badge">1 MD E · 2 MD E · 1 WD E · 2 WD E · 1 MXD E · 2 MXD E</span></h3>
+      <p class="hint">Combines all E-level categories, including the bracket-only ones.</p>
+      <table>
+        <thead><tr><th>#</th><th>Team</th><th>Wins</th><th>Games Played</th><th>Score</th></tr></thead>
+        <tbody id="e-level-leaderboard-body"></tbody>
       </table>
     </div>
     <div class="card">
@@ -1026,31 +1034,46 @@ async function submitScore(){
 }
 
 // ---------- LEADERBOARD ----------
+const E_LEVEL_CATEGORIES = ['1 MD E', '2 MD E', '1 WD E', '2 WD E', '1 MXD E', '2 MXD E'];
+
 async function loadLeaderboard(){
-  const body = document.getElementById('leaderboard-body');
-  if(!db){ body.innerHTML = ''; return; }
+  const mainBody = document.getElementById('leaderboard-body');
+  const eBody = document.getElementById('e-level-leaderboard-body');
+  if(!db){ mainBody.innerHTML = ''; eBody.innerHTML = ''; return; }
 
-  const { data, error } = await db
-    .from('team_leaderboard')
-    .select('*')
-    .order('wins', { ascending: false });
-
-  if(error){ body.innerHTML = `<tr><td colspan="4">Error: ${error.message}</td></tr>`; return; }
-
-  body.innerHTML = data.map((row, i)=>`
-    <tr>
-      <td class="rank">${i+1}</td>
-      <td>${row.team_name}</td>
-      <td><strong>${row.wins}</strong></td>
-      <td>${row.games_played}</td>
-    </tr>
-  `).join('');
-
-  const { data: matchData } = await db
+  const { data: matchData, error } = await db
     .from('matches')
     .select('*, categories(name, counts_toward_team_total), teamA:team_a_id(name), teamB:team_b_id(name), winner:winner_team_id(name)')
     .eq('status', 'completed')
     .order('created_at', { ascending: false });
+
+  if(error){
+    mainBody.innerHTML = `<tr><td colspan="5">Error: ${error.message}</td></tr>`;
+    return;
+  }
+
+  const mainStats = {};
+  const eStats = {};
+  teams.forEach(t=>{
+    mainStats[t.id] = { name: t.name, wins: 0, games: 0, score: 0 };
+    eStats[t.id] = { name: t.name, wins: 0, games: 0, score: 0 };
+  });
+
+  (matchData || []).forEach(m=>{
+    const catName = m.categories.name;
+    const countsMain = m.categories.counts_toward_team_total;
+    const isELevel = E_LEVEL_CATEGORIES.includes(catName);
+
+    if(countsMain){
+      tallyMatch(mainStats, m);
+    }
+    if(isELevel){
+      tallyMatch(eStats, m);
+    }
+  });
+
+  renderStandingsTable(mainBody, mainStats);
+  renderStandingsTable(eBody, eStats);
 
   const breakdown = document.getElementById('category-breakdown');
   if(!matchData || !matchData.length){
@@ -1068,6 +1091,32 @@ async function loadLeaderboard(){
       → <span class="winner">${m.winner ? m.winner.name : '—'} won</span>
     </div>`;
   }).join('');
+}
+
+function tallyMatch(statsObj, m){
+  if(statsObj[m.team_a_id]){
+    statsObj[m.team_a_id].games++;
+    statsObj[m.team_a_id].score += (m.team_a_score || 0);
+    if(m.winner_team_id === m.team_a_id) statsObj[m.team_a_id].wins++;
+  }
+  if(statsObj[m.team_b_id]){
+    statsObj[m.team_b_id].games++;
+    statsObj[m.team_b_id].score += (m.team_b_score || 0);
+    if(m.winner_team_id === m.team_b_id) statsObj[m.team_b_id].wins++;
+  }
+}
+
+function renderStandingsTable(tbodyEl, statsObj){
+  const rows = Object.values(statsObj).sort((a,b) => b.wins - a.wins || b.score - a.score);
+  tbodyEl.innerHTML = rows.map((r, i)=>`
+    <tr>
+      <td class="rank">${i+1}</td>
+      <td>${r.name}</td>
+      <td><strong>${r.wins}</strong></td>
+      <td>${r.games}</td>
+      <td>${r.score}</td>
+    </tr>
+  `).join('');
 }
 
 // ---------- BRACKET ----------
