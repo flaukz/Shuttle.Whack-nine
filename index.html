@@ -387,9 +387,9 @@
       <select id="sc-court">
         <option value="1">Court 1</option>
         <option value="2">Court 2</option>
-        <option value="3">Court 3</option>
-        <option value="4">Court 4</option>
-        <option value="5">Court 5</option>
+        <option value="3">Court 5</option>
+        <option value="4">Court 6</option>
+        <option value="5">Court 7</option>
       </select>
 
       <div class="row">
@@ -504,6 +504,12 @@ let teams = [];
 let players = [];
 let editingMatchId = null;
 let editingPlayerId = null;
+
+// Maps the internal court_number (1-5, stored in the database) to the label shown to users
+const COURT_LABELS = { 1: 1, 2: 2, 3: 5, 4: 6, 5: 7 };
+function courtLabel(courtNumber){
+  return COURT_LABELS[courtNumber] || courtNumber;
+}
 
 // ---------- TAB NAVIGATION ----------
 document.querySelectorAll('nav button').forEach(btn=>{
@@ -1052,7 +1058,7 @@ async function loadScheduleList(){
       const courtMatches = data.filter(m => m.court_number === n);
       return `<div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <div style="font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--court-green);">Court ${n}</div>
+          <div style="font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--court-green);">Court ${courtLabel(n)}</div>
           <button class="small" onclick="assignToCourt(${n})">+ Assign Match</button>
         </div>
         ${courtMatches.length
@@ -1134,7 +1140,7 @@ async function loadMatchesForScoring(){
 
   select.innerHTML = data.map(m=>
     `<option value="${m.id}" data-teama="${m.team_a_id}" data-teamb="${m.team_b_id}" data-teamaname="${m.teamA.name}" data-teambname="${m.teamB.name}">
-      ${m.categories.name}: ${m.teamA.name} vs ${m.teamB.name} (Court ${m.court_number})
+      ${m.categories.name}: ${m.teamA.name} vs ${m.teamB.name} (Court ${courtLabel(m.court_number)})
     </option>`
   ).join('');
 
