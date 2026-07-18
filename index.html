@@ -364,7 +364,8 @@
       <select id="new-player-team"></select>
       <button class="primary" onclick="addPlayer()">Add Player</button>
       <div id="player-msg"></div>
-      <div id="player-list" style="margin-top:12px;"></div>
+      <p class="hint" style="margin-top:12px;">Check a player's box below to mark them <strong>present</strong> — only present players show up when scheduling a match.</p>
+      <div id="player-list" style="margin-top:4px;"></div>
     </div>
   </div>
 
@@ -678,12 +679,33 @@ function renderPlayerRow(p){
     </div>`;
   }
   return `<div class="list-item">
-    <span>${p.name}</span>
+    <span>
+      <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; font-weight:normal;">
+        <input type="checkbox" style="width:auto;" ${p.is_present ? 'checked' : ''} onchange="togglePresence('${p.id}', this.checked)">
+        ${p.name}
+      </label>
+    </span>
     <span>
       <button class="small ghost" onclick="startEditPlayer('${p.id}')">Edit</button>
       <button class="small ghost" style="border-color:var(--danger); color:var(--danger);" onclick="deletePlayer('${p.id}')">Delete</button>
     </span>
   </div>`;
+}
+
+async function togglePresence(playerId, isPresent){
+  if(!db) return;
+  const { error } = await db.from('players').update({ is_present: isPresent }).eq('id', playerId);
+  if(error){
+    alert('Error updating attendance: ' + error.message);
+    renderPlayerList();
+    return;
+  }
+  const p = players.find(pl => pl.id === playerId);
+  if(p) p.is_present = isPresent;
+
+  // Refresh schedule dropdowns in case this player's team is currently selected there
+  populateTeamPlayers('A');
+  populateTeamPlayers('B');
 }
 
 function startEditPlayer(playerId){
@@ -816,11 +838,13 @@ function updateCategoryOptionsForRound(){
 function populateTeamPlayers(side){
   const teamSelect = document.getElementById('sc-team'+side);
   const teamId = teamSelect.value;
-  const teamPlayers = players.filter(p=>p.team_id === teamId);
+  const teamPlayers = players.filter(p=>p.team_id === teamId && p.is_present);
 
   const p1 = document.getElementById('sc-player'+side+'1');
   const p2 = document.getElementById('sc-player'+side+'2');
-  const options = '<option value="">— none —</option>' + teamPlayers.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  const options = teamPlayers.length
+    ? '<option value="">— none —</option>' + teamPlayers.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')
+    : '<option value="">— no players marked present —</option>';
   p1.innerHTML = options;
   p2.innerHTML = options;
 }
@@ -925,8 +949,28 @@ async function editMatch(matchId){
   populateTeamPlayers('A');
   populateTeamPlayers('B');
 
-  const sideA = m.match_players.filter(mp=>mp.side==='A').map(mp=>mp.player_id);
-  const sideB = m.match_players.filter(mp=>mp.side==='B').map(mp=>mp.player_id);
+  const sideA = m.match_players.filter(mp=>mp.side==='A').map(mp=>mp.player_id).filter(Boolean);
+  const sideB = m.match_players.filter(mp=>mp.side==='B').map(mp=>mp.player_id).filter(Boolean);
+
+  // If a previously-assigned player is no longer marked present, add them back
+  // into the dropdown so editing this match doesn't silently drop them.
+  [...sideA, ...sideB].forEach(pid=>{
+    const alreadyPresent = players.find(p=>p.id===pid)?.is_present;
+    if(alreadyPresent) return;
+    const p = players.find(pl=>pl.id===pid);
+    if(!p) return;
+    const targetSelects = sideA.includes(pid)
+      ? [document.getElementById('sc-playerA1'), document.getElementById('sc-playerA2')]
+      : [document.getElementById('sc-playerB1'), document.getElementById('sc-playerB2')];
+    targetSelects.forEach(sel=>{
+      if(![...sel.options].some(o=>o.value===pid)){
+        const opt = document.createElement('option');
+        opt.value = pid;
+        opt.textContent = p.name + ' (absent)';
+        sel.appendChild(opt);
+      }
+    });
+  });
 
   document.getElementById('sc-playerA1').value = sideA[0] || '';
   document.getElementById('sc-playerA2').value = sideA[1] || '';
