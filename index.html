@@ -311,7 +311,8 @@
 <nav>
   <button class="active" data-tab="setup">Setup</button>
   <button data-tab="players">Players</button>
-  <button data-tab="schedule">Schedule</button>
+  <button data-tab="schedule">Match-ups</button>
+  <button data-tab="courts">Schedule</button>
   <button data-tab="score">Score Entry</button>
   <button data-tab="leaderboard">Leaderboard</button>
   <button data-tab="bracket">Bracket</button>
@@ -372,7 +373,7 @@
   <!-- TOURNAMENT SCHEDULE TAB -->
   <div class="tab" id="tab-schedule">
     <div class="card">
-      <h3 id="schedule-form-title">Schedule a Match</h3>
+      <h3 id="schedule-form-title">Create Match-up</h3>
       <label>Round</label>
       <select id="sc-round" onchange="updateCategoryOptionsForRound()">
         <option value="round_robin">Round Robin (default)</option>
@@ -411,19 +412,62 @@
         </div>
       </div>
 
-      <button class="primary" id="schedule-submit-btn" onclick="createMatch()">Add to Schedule</button>
+      <button class="primary" id="schedule-submit-btn" onclick="createMatch()">Add Match-up</button>
       <button class="small ghost hidden" id="schedule-cancel-btn" style="margin-top:8px; width:100%;" onclick="cancelEdit()">Cancel Edit</button>
       <div id="schedule-create-msg"></div>
     </div>
 
     <div class="card">
-      <h3>Match Schedule
+      <h3>All Match-ups
         <span class="pill not-played">Not Played</span>
         <span class="pill ongoing">Ongoing</span>
         <span class="pill finished">Finished</span>
       </h3>
       <div id="schedule-list">Connect Supabase first.</div>
     </div>
+  </div>
+
+  <!-- COURT SCHEDULE TAB (visual court board, no attendance filter) -->
+  <div class="tab" id="tab-courts">
+    <div class="card" id="court-form-card" style="display:none;">
+      <h3 id="court-form-title">Assign Match — Court</h3>
+      <p class="hint">Players here aren't filtered by attendance — everyone on the roster is available.</p>
+
+      <label id="ct-category-label">Category</label>
+      <select id="ct-category"></select>
+
+      <label>Round</label>
+      <select id="ct-round" onchange="updateCourtCategoryOptions()">
+        <option value="round_robin">Round Robin (default)</option>
+        <option value="semifinal">Semifinal</option>
+        <option value="final">Final</option>
+      </select>
+
+      <div class="row">
+        <div>
+          <label>Team A</label>
+          <select id="ct-teamA" onchange="populateCourtTeamPlayers('A')"></select>
+          <label>Team A Player 1</label>
+          <select id="ct-playerA1"></select>
+          <label>Team A Player 2 (doubles)</label>
+          <select id="ct-playerA2"></select>
+        </div>
+        <div>
+          <label>Team B</label>
+          <select id="ct-teamB" onchange="populateCourtTeamPlayers('B')"></select>
+          <label>Team B Player 1</label>
+          <select id="ct-playerB1"></select>
+          <label>Team B Player 2 (doubles)</label>
+          <select id="ct-playerB2"></select>
+        </div>
+      </div>
+
+      <button class="primary" id="court-form-submit-btn" onclick="submitCourtMatch()">Assign Match</button>
+      <button class="small ghost" style="margin-top:8px; width:100%;" onclick="closeCourtForm()">Cancel</button>
+      <div id="court-form-msg"></div>
+    </div>
+
+    <div id="courts-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px;">Connect Supabase first.</div>
   </div>
 
   <!-- SCORE ENTRY TAB -->
@@ -516,6 +560,7 @@ document.querySelectorAll('nav button').forEach(btn=>{
     if(btn.dataset.tab === 'bracket') loadBracket();
     if(btn.dataset.tab === 'score') loadMatchesForScoring();
     if(btn.dataset.tab === 'schedule') loadScheduleList();
+    if(btn.dataset.tab === 'courts') loadCourtsGrid();
     if(btn.dataset.tab === 'players') refreshRosterLists();
   });
 });
@@ -805,34 +850,58 @@ function populateScheduleDropdowns(){
 
   populateTeamPlayers('A');
   populateTeamPlayers('B');
+
+  // Court form (Schedule tab) shares the same category logic, under the 'ct-' prefix
+  updateCourtCategoryOptions();
+  const ctTeamA = document.getElementById('ct-teamA');
+  const ctTeamB = document.getElementById('ct-teamB');
+  ctTeamA.innerHTML = ctTeamB.innerHTML = teams.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+  populateCourtTeamPlayers('A');
+  populateCourtTeamPlayers('B');
+}
+
+function buildCategoryOptions(round){
+  if(round === 'round_robin'){
+    const excluded = [...SEMIFINAL_MATCHUP_CATEGORIES, ...FINAL_CATEGORIES];
+    const roundRobinCats = categories.filter(c => !excluded.includes(c.name));
+    return {
+      label: 'Category',
+      html: roundRobinCats.map(c=>{
+        const tag = c.counts_toward_team_total ? '' : ' (bracket only)';
+        return `<option value="${c.id}">${c.name}${tag}</option>`;
+      }).join('')
+    };
+  } else if(round === 'semifinal'){
+    const matchupCats = categories.filter(c => SEMIFINAL_MATCHUP_CATEGORIES.includes(c.name));
+    return {
+      label: 'Matchup',
+      html: matchupCats.length
+        ? matchupCats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')
+        : '<option value="">Reconnect to auto-create matchup categories</option>'
+    };
+  } else {
+    const finalCats = categories.filter(c => FINAL_CATEGORIES.includes(c.name));
+    return {
+      label: 'Bracket',
+      html: finalCats.length
+        ? finalCats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')
+        : '<option value="">Reconnect to auto-create final categories</option>'
+    };
+  }
 }
 
 function updateCategoryOptionsForRound(){
   const round = document.getElementById('sc-round').value;
-  const catSelect = document.getElementById('sc-category');
-  const label = document.getElementById('sc-category-label');
+  const result = buildCategoryOptions(round);
+  document.getElementById('sc-category-label').textContent = result.label;
+  document.getElementById('sc-category').innerHTML = result.html;
+}
 
-  if(round === 'round_robin'){
-    label.textContent = 'Category';
-    const excluded = [...SEMIFINAL_MATCHUP_CATEGORIES, ...FINAL_CATEGORIES];
-    const roundRobinCats = categories.filter(c => !excluded.includes(c.name));
-    catSelect.innerHTML = roundRobinCats.map(c=>{
-      const tag = c.counts_toward_team_total ? '' : ' (bracket only)';
-      return `<option value="${c.id}">${c.name}${tag}</option>`;
-    }).join('');
-  } else if(round === 'semifinal'){
-    label.textContent = 'Matchup';
-    const matchupCats = categories.filter(c => SEMIFINAL_MATCHUP_CATEGORIES.includes(c.name));
-    catSelect.innerHTML = matchupCats.length
-      ? matchupCats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')
-      : '<option value="">Reconnect to auto-create matchup categories</option>';
-  } else {
-    label.textContent = 'Bracket';
-    const finalCats = categories.filter(c => FINAL_CATEGORIES.includes(c.name));
-    catSelect.innerHTML = finalCats.length
-      ? finalCats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')
-      : '<option value="">Reconnect to auto-create final categories</option>';
-  }
+function updateCourtCategoryOptions(){
+  const round = document.getElementById('ct-round').value;
+  const result = buildCategoryOptions(round);
+  document.getElementById('ct-category-label').textContent = result.label;
+  document.getElementById('ct-category').innerHTML = result.html;
 }
 
 function populateTeamPlayers(side){
@@ -845,6 +914,21 @@ function populateTeamPlayers(side){
   const options = teamPlayers.length
     ? '<option value="">— none —</option>' + teamPlayers.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')
     : '<option value="">— no players marked present —</option>';
+  p1.innerHTML = options;
+  p2.innerHTML = options;
+}
+
+function populateCourtTeamPlayers(side){
+  const teamSelect = document.getElementById('ct-team'+side);
+  const teamId = teamSelect.value;
+  // No attendance filter here — everyone on the roster is selectable
+  const teamPlayers = players.filter(p=>p.team_id === teamId);
+
+  const p1 = document.getElementById('ct-player'+side+'1');
+  const p2 = document.getElementById('ct-player'+side+'2');
+  const options = teamPlayers.length
+    ? '<option value="">— none —</option>' + teamPlayers.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')
+    : '<option value="">— no players on this team yet —</option>';
   p1.innerHTML = options;
   p2.innerHTML = options;
 }
@@ -916,7 +1000,7 @@ async function createMatch(){
 
   msg.innerHTML = editingMatchId
     ? '<div class="msg ok">Match updated!</div>'
-    : '<div class="msg ok">Match added to schedule!</div>';
+    : '<div class="msg ok">Match-up added!</div>';
 
   cancelEdit();
   loadScheduleList();
@@ -982,8 +1066,8 @@ async function editMatch(matchId){
 
 function cancelEdit(){
   editingMatchId = null;
-  document.getElementById('schedule-form-title').textContent = 'Schedule a Match';
-  document.getElementById('schedule-submit-btn').textContent = 'Add to Schedule';
+  document.getElementById('schedule-form-title').textContent = 'Create Match-up';
+  document.getElementById('schedule-submit-btn').textContent = 'Add Match-up';
   document.getElementById('schedule-cancel-btn').classList.add('hidden');
   document.getElementById('sc-playerA1').value = '';
   document.getElementById('sc-playerA2').value = '';
@@ -1042,7 +1126,10 @@ async function loadScheduleList(){
 async function startMatch(matchId){
   if(!db) return;
   const { error } = await db.from('matches').update({ status: 'in_progress' }).eq('id', matchId);
-  if(!error) loadScheduleList();
+  if(!error){
+    loadScheduleList();
+    if(document.getElementById('tab-courts').classList.contains('active')) loadCourtsGrid();
+  }
 }
 
 async function cancelMatch(matchId){
@@ -1065,8 +1152,185 @@ async function cancelMatch(matchId){
 
   // If this match was being edited, reset the form
   if(editingMatchId === matchId) cancelEdit();
+  if(courtFormEditingMatchId === matchId) closeCourtForm();
 
   loadScheduleList();
+  if(document.getElementById('tab-courts').classList.contains('active')) loadCourtsGrid();
+}
+
+// ---------- COURT SCHEDULE BOARD (Schedule tab) ----------
+let courtFormTargetCourt = null;
+let courtFormEditingMatchId = null;
+
+async function loadCourtsGrid(){
+  const grid = document.getElementById('courts-grid');
+  if(!db){ grid.innerHTML = 'Connect Supabase first.'; return; }
+
+  const { data, error } = await db
+    .from('matches')
+    .select('*, categories(name), teamA:team_a_id(name), teamB:team_b_id(name), match_players(player_name, side)')
+    .in('status', ['scheduled', 'in_progress'])
+    .order('created_at', { ascending: false });
+
+  if(error){ grid.innerHTML = 'Error loading courts: ' + error.message; return; }
+
+  const courts = [1, 2, 3, 4, 5];
+  grid.innerHTML = courts.map(n=>{
+    const match = (data || []).find(m => m.court_number === n);
+
+    if(!match){
+      return `<div class="card" style="margin-bottom:0;">
+        <h3>Court ${n}</h3>
+        <p class="hint">No match assigned.</p>
+        <button class="primary" onclick="openCourtForm(${n})">Assign Match</button>
+      </div>`;
+    }
+
+    const playersA = match.match_players.filter(mp=>mp.side==='A').map(mp=>mp.player_name).join(' / ') || '—';
+    const playersB = match.match_players.filter(mp=>mp.side==='B').map(mp=>mp.player_name).join(' / ') || '—';
+    let pillClass = 'not-played', pillLabel = 'Not Played';
+    if(match.status === 'in_progress'){ pillClass = 'ongoing'; pillLabel = 'Ongoing'; }
+
+    return `<div class="card" style="margin-bottom:0;">
+      <h3>Court ${n} <span class="pill ${pillClass}" style="float:right;">${pillLabel}</span></h3>
+      <p class="hint" style="margin-bottom:6px;">${match.categories.name}</p>
+      <div style="font-weight:600; margin-bottom:6px;">${match.teamA.name} vs ${match.teamB.name}</div>
+      <div style="font-size:0.82rem; color:var(--gray); margin-bottom:12px;">
+        ${match.teamA.name}: ${playersA}<br>${match.teamB.name}: ${playersB}
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${match.status === 'scheduled' ? `<button class="small ghost" onclick="startMatchFromCourt('${match.id}')">Start Match</button>` : ''}
+        <button class="small ghost" onclick="openCourtForm(${n}, '${match.id}')">Change</button>
+        <button class="small ghost" style="border-color:var(--danger); color:var(--danger);" onclick="clearCourt('${match.id}')">Clear</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function startMatchFromCourt(matchId){
+  await startMatch(matchId);
+  loadCourtsGrid();
+}
+
+async function clearCourt(matchId){
+  await cancelMatch(matchId);
+  loadCourtsGrid();
+}
+
+function openCourtForm(courtNumber, existingMatchId){
+  courtFormTargetCourt = courtNumber;
+  courtFormEditingMatchId = existingMatchId || null;
+
+  document.getElementById('court-form-title').textContent = existingMatchId
+    ? `Change Match — Court ${courtNumber}`
+    : `Assign Match — Court ${courtNumber}`;
+  document.getElementById('court-form-submit-btn').textContent = existingMatchId ? 'Save Changes' : 'Assign Match';
+  document.getElementById('court-form-msg').innerHTML = '';
+  document.getElementById('court-form-card').style.display = 'block';
+
+  if(existingMatchId){
+    prefillCourtForm(existingMatchId);
+  } else {
+    document.getElementById('ct-round').value = 'round_robin';
+    updateCourtCategoryOptions();
+    document.getElementById('ct-playerA1').value = '';
+    document.getElementById('ct-playerA2').value = '';
+    document.getElementById('ct-playerB1').value = '';
+    document.getElementById('ct-playerB2').value = '';
+  }
+
+  document.getElementById('court-form-card').scrollIntoView({ behavior:'smooth' });
+}
+
+async function prefillCourtForm(matchId){
+  const { data: m, error } = await db
+    .from('matches')
+    .select('*, match_players(player_id, side)')
+    .eq('id', matchId)
+    .single();
+
+  if(error || !m) return;
+
+  document.getElementById('ct-round').value = m.round;
+  updateCourtCategoryOptions();
+  document.getElementById('ct-category').value = m.category_id;
+  document.getElementById('ct-teamA').value = m.team_a_id;
+  document.getElementById('ct-teamB').value = m.team_b_id;
+
+  populateCourtTeamPlayers('A');
+  populateCourtTeamPlayers('B');
+
+  const sideA = m.match_players.filter(mp=>mp.side==='A').map(mp=>mp.player_id).filter(Boolean);
+  const sideB = m.match_players.filter(mp=>mp.side==='B').map(mp=>mp.player_id).filter(Boolean);
+
+  document.getElementById('ct-playerA1').value = sideA[0] || '';
+  document.getElementById('ct-playerA2').value = sideA[1] || '';
+  document.getElementById('ct-playerB1').value = sideB[0] || '';
+  document.getElementById('ct-playerB2').value = sideB[1] || '';
+}
+
+function closeCourtForm(){
+  courtFormTargetCourt = null;
+  courtFormEditingMatchId = null;
+  document.getElementById('court-form-card').style.display = 'none';
+  document.getElementById('court-form-msg').innerHTML = '';
+}
+
+async function submitCourtMatch(){
+  const msg = document.getElementById('court-form-msg');
+  if(!db){ msg.innerHTML = '<div class="msg err">Connect Supabase first (Setup tab).</div>'; return; }
+
+  const categoryId = document.getElementById('ct-category').value;
+  const round = document.getElementById('ct-round').value;
+  const teamA = document.getElementById('ct-teamA').value;
+  const teamB = document.getElementById('ct-teamB').value;
+  const playerA1 = document.getElementById('ct-playerA1').value;
+  const playerA2 = document.getElementById('ct-playerA2').value;
+  const playerB1 = document.getElementById('ct-playerB1').value;
+  const playerB2 = document.getElementById('ct-playerB2').value;
+
+  let matchId;
+
+  if(courtFormEditingMatchId){
+    const { error } = await db.from('matches').update({
+      category_id: categoryId,
+      round: round,
+      team_a_id: teamA,
+      team_b_id: teamB
+    }).eq('id', courtFormEditingMatchId);
+
+    if(error){ msg.innerHTML = '<div class="msg err">Error: '+error.message+'</div>'; return; }
+    matchId = courtFormEditingMatchId;
+    await db.from('match_players').delete().eq('match_id', matchId);
+  } else {
+    const { data: match, error } = await db.from('matches').insert({
+      category_id: categoryId,
+      court_number: courtFormTargetCourt,
+      team_a_id: teamA,
+      team_b_id: teamB,
+      round: round,
+      status: 'scheduled'
+    }).select().single();
+
+    if(error){ msg.innerHTML = '<div class="msg err">Error: '+error.message+'</div>'; return; }
+    matchId = match.id;
+  }
+
+  const playerRows = [];
+  [playerA1, playerA2].filter(Boolean).forEach(pid=>{
+    const p = players.find(pl=>pl.id===pid);
+    if(p) playerRows.push({ match_id: matchId, player_id: p.id, player_name: p.name, side: 'A' });
+  });
+  [playerB1, playerB2].filter(Boolean).forEach(pid=>{
+    const p = players.find(pl=>pl.id===pid);
+    if(p) playerRows.push({ match_id: matchId, player_id: p.id, player_name: p.name, side: 'B' });
+  });
+  if(playerRows.length){
+    await db.from('match_players').insert(playerRows);
+  }
+
+  closeCourtForm();
+  loadCourtsGrid();
 }
 
 // ---------- SCORE ENTRY ----------
