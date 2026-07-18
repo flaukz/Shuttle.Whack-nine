@@ -1238,7 +1238,7 @@ async function loadLeaderboard(){
   await loadSemisFinalsPanel();
 
   eContainer.innerHTML = E_LEVEL_CATEGORIES.map(catName=>{
-    const rows = Object.values(perCategoryStats[catName]).sort((a,b) => b.wins - a.wins || b.score - a.score);
+    const rows = Object.values(perCategoryStats[catName]).sort((a,b) => b.score - a.score || b.wins - a.wins);
     const anyPlayed = rows.some(r=>r.games > 0);
     const rowsHtml = rows.map((r,i)=>`
       <tr>
@@ -1328,7 +1328,7 @@ function tallyMatch(statsObj, m){
 }
 
 function renderStandingsTable(tbodyEl, statsObj){
-  const rows = Object.values(statsObj).sort((a,b) => b.wins - a.wins || b.score - a.score);
+  const rows = Object.values(statsObj).sort((a,b) => b.score - a.score || b.wins - a.wins);
   tbodyEl.innerHTML = rows.map((r, i)=>`
     <tr>
       <td class="rank">${i+1}</td>
