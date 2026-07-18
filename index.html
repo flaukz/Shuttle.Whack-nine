@@ -1008,7 +1008,7 @@ async function loadScheduleList(){
   const { data, error } = await db
     .from('matches')
     .select('*, categories(name), teamA:team_a_id(name), teamB:team_b_id(name), match_players(player_name, side)')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: true });
 
   if(error){ container.innerHTML = 'Error loading matches: '+error.message; return; }
 
