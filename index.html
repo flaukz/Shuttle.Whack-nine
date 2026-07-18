@@ -1088,7 +1088,7 @@ async function loadScheduleList(){
   if(error){ container.innerHTML = 'Error loading matches: '+error.message; return; }
   if(!data.length){ container.innerHTML = '<p class="hint">No matches scheduled yet.</p>'; return; }
 
-  container.innerHTML = data.map(m=>{
+  function renderMatchCard(m){
     const playersA = m.match_players.filter(mp=>mp.side==='A').map(mp=>mp.player_name).join(' / ') || '—';
     const playersB = m.match_players.filter(mp=>mp.side==='B').map(mp=>mp.player_name).join(' / ') || '—';
 
@@ -1114,13 +1114,27 @@ async function loadScheduleList(){
         <span class="pill ${pillClass}">${pillLabel}</span>
       </div>
       <div class="meta">
-        ${m.categories.name} ${roundTag} · Court ${m.court_number}<br>
+        ${m.categories.name} ${roundTag}<br>
         ${m.teamA.name}: ${playersA} &nbsp;|&nbsp; ${m.teamB.name}: ${playersB}
         ${scoreLine ? '<br>Score: '+scoreLine : ''}
       </div>
       <div class="actions">${actionBtn}</div>
     </div>`;
-  }).join('');
+  }
+
+  const courts = [1, 2, 3, 4, 5];
+  container.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px;">
+    ${courts.map(n=>{
+      const courtMatches = data.filter(m => m.court_number === n);
+      return `<div>
+        <div style="font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--court-green); margin-bottom:8px;">Court ${n}</div>
+        ${courtMatches.length
+          ? courtMatches.map(renderMatchCard).join('')
+          : '<p class="hint">No matches for this court yet.</p>'
+        }
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 async function startMatch(matchId){
