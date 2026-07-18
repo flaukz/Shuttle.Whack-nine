@@ -1011,7 +1011,6 @@ async function loadScheduleList(){
     .order('created_at', { ascending: false });
 
   if(error){ container.innerHTML = 'Error loading matches: '+error.message; return; }
-  if(!data.length){ container.innerHTML = '<p class="hint">No matches scheduled yet.</p>'; return; }
 
   function renderMatchCard(m){
     const playersA = m.match_players.filter(mp=>mp.side==='A').map(mp=>mp.player_name).join(' / ') || '—';
@@ -1052,7 +1051,10 @@ async function loadScheduleList(){
     ${courts.map(n=>{
       const courtMatches = data.filter(m => m.court_number === n);
       return `<div>
-        <div style="font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--court-green); margin-bottom:8px;">Court ${n}</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div style="font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--court-green);">Court ${n}</div>
+          <button class="small" onclick="assignToCourt(${n})">+ Assign Match</button>
+        </div>
         ${courtMatches.length
           ? courtMatches.map(renderMatchCard).join('')
           : '<p class="hint">No matches for this court yet.</p>'
@@ -1060,6 +1062,12 @@ async function loadScheduleList(){
       </div>`;
     }).join('')}
   </div>`;
+}
+
+function assignToCourt(courtNumber){
+  cancelEdit();
+  document.getElementById('sc-court').value = courtNumber;
+  document.getElementById('schedule-form-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function startMatch(matchId){
