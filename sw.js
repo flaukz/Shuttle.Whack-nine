@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shuttle-league-v1';
+const CACHE_NAME = 'shuttle-league-v2';
 const APP_SHELL = [
   './index.html',
   './manifest.json',
@@ -35,6 +35,27 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const isAppShellFile = url.origin === self.location.origin &&
+    (event.request.mode === 'navigate' || url.pathname.endsWith('index.html') || url.pathname.endsWith('/'));
+
+  if (isAppShellFile) {
+    // Network-first for the app itself: always try to get the latest version.
+    // Only fall back to the cached copy if the network request fails (offline).
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response && response.status === 200) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseClone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Cache-first for everything else (icons, manifest) — these rarely change
   event.respondWith(
     caches.match(event.request).then(cached => {
       const networkFetch = fetch(event.request)
@@ -47,7 +68,6 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => cached);
 
-      // Serve cached app shell instantly if we have it, otherwise wait on network
       return cached || networkFetch;
     })
   );
